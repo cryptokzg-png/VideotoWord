@@ -11,7 +11,7 @@ import { highlightKey, shareText } from '../lib/notes';
 import { BookCard, ContinueCard } from '../components/BookCard';
 import { parseVideoId } from '../lib/youtube';
 import { fold, splitByMatch } from '../lib/search';
-import { searchAll, type BookHits, type BookText } from '../lib/searchAll';
+import { searchAllAsync, type BookHits, type BookText } from '../lib/searchAll';
 import { buildBook } from '../lib/buildBook';
 import { sampleVideo } from '../lib/sample';
 import { serif, useTheme } from '../theme';
@@ -43,7 +43,8 @@ export default function LibraryScreen({ navigation }: Props) {
   const scroll = useRef<ComponentRef<typeof ScrollView>>(null);
   const textsCache = useRef<BookText[] | null>(null); // full text of every book, loaded on first search
   const [groups, setGroups] = useState<BookHits[]>([]);
-  const [searching, setSearching] = useState(false);
+  const [searchedFor, setSearchedFor] = useState(''); // the query the shown results belong to
+  const [tookMs, setTookMs] = useState(0);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [clip, setClip] = useState<string | null>(null); // video id found on the clipboard
   const dismissed = useRef<Set<string>>(new Set());
@@ -104,33 +105,40 @@ export default function LibraryScreen({ navigation }: Props) {
 
   const contentQuery = filter !== 'quotes' && query.length >= 2;
 
-  // search the text of every book (debounced; the texts are loaded once and cached)
+  // search the text of every book (debounced; texts are loaded once and cached, work is chunked)
   useEffect(() => {
     if (!contentQuery) {
       setGroups([]);
-      setSearching(false);
+      setSearchedFor('');
       return;
     }
-    setSearching(true);
+    const term = q.trim();
     let cancelled = false;
     const timer = setTimeout(async () => {
+      const started = Date.now();
+      let result: BookHits[] | null = [];
       try {
         const data = textsCache.current ?? (await listBookTexts());
         textsCache.current = data;
         if (cancelled) return;
         const allowed = new Set(books.filter((b) => filter === 'all' || b.favorite).map((b) => b.id));
-        setGroups(searchAll(data.filter((b) => allowed.has(b.id)), q.trim()));
+        result = await searchAllAsync(data.filter((b) => allowed.has(b.id)), term, () => cancelled);
       } catch {
-        if (!cancelled) setGroups([]);
-      } finally {
-        if (!cancelled) setSearching(false);
+        result = []; // never leave the screen waiting
       }
-    }, 280);
+      if (cancelled || result === null) return;
+      setGroups(result);
+      setTookMs(Date.now() - started);
+      setSearchedFor(term);
+    }, 250);
     return () => {
       cancelled = true;
       clearTimeout(timer);
     };
   }, [q, filter, books, contentQuery]);
+
+  // results are for an older query (or still being computed)
+  const searching = contentQuery && searchedFor !== q.trim();
 
   const totalHits = groups.reduce((a, g) => a + g.hits.length, 0);
 
@@ -302,7 +310,7 @@ export default function LibraryScreen({ navigation }: Props) {
                 ) : (
                   groups.length > 0 && (
                     <Text style={[s.label, { color: t.muted, marginTop: 14 }]}>
-                      KİTAP İÇİNDE · {groups.length} KİTAPTA {totalHits}{groups.some((g) => g.capped) ? '+' : ''} SONUÇ
+                      KİTAP İÇİNDE · {groups.length} KİTAPTA {totalHits}{groups.some((g) => g.capped) ? '+' : ''} SONUÇ · {(tookMs / 1000).toFixed(1)} SN
                     </Text>
                   )
                 )}

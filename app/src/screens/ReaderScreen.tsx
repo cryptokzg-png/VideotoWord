@@ -10,7 +10,7 @@ import { autoTitle } from '../lib/titles';
 import { RenameDialog } from '../components/RenameDialog';
 import { highlightKey, paragraphRange, selectQuote, shareText, tapWord, tokenize, wordCount } from '../lib/notes';
 import { COVER, pageForPos, pageStarts, pagesFromLines } from '../lib/layout';
-import { searchBook, splitByMatch, type SearchHit } from '../lib/search';
+import { foldChapters, searchBook, splitByMatch, type SearchHit } from '../lib/search';
 import { exportPdf, sharePageImage } from '../lib/shareBook';
 import { describeBook } from '../lib/sizeLabel';
 import type { Book, Note } from '../types';
@@ -267,7 +267,11 @@ export default function ReaderScreen({ route, navigation }: Props) {
     toast(had ? 'Yer imi kaldırıldı' : '★ Yer imi eklendi');
   };
 
-  const hits: SearchHit[] = useMemo(() => (book && searchOpen ? searchBook(book.chapters, query) : []), [book, searchOpen, query]);
+  const foldedText = useMemo(() => (book && searchOpen ? foldChapters(book.chapters) : []), [book, searchOpen]);
+  const hits: SearchHit[] = useMemo(
+    () => (book && searchOpen ? searchBook(book.chapters, query, 100, foldedText) : []),
+    [book, searchOpen, query, foldedText],
+  );
 
   const run = async (label: string, fn: () => Promise<void>) => {
     setBusy(label);

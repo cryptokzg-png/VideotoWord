@@ -173,6 +173,33 @@ eq([isPlainTitle(rg[0]), isPlainTitle({ title: 'Bölüm 7', text: '' }), isPlain
 const built = buildBook(sampleVideo());
 if (built.chapters.some((c) => /^Bölüm \d+$/.test(c.title))) { console.error('FAIL new books should get automatic titles', built.chapters.map((c) => c.title)); process.exit(1); }
 
+// ---- fold: same result as the old toLocaleLowerCase version, but fast ----
+import { fold as fastFold, foldChapters } from '../src/lib/search';
+const oldFold = (s: string) => {
+  const M: Record<string, string> = { 'ı': 'i', 'ş': 's', 'ğ': 'g', 'ç': 'c', 'ö': 'o', 'ü': 'u', 'â': 'a', 'î': 'i', 'û': 'u' };
+  let out = '';
+  for (const ch of s) { const lc = ch.toLocaleLowerCase('tr'); const c = lc.length === ch.length ? lc : ch; out += M[c] ?? c; }
+  return out;
+};
+let every = '';
+for (let c = 32; c < 0x250; c++) every += String.fromCharCode(c);
+eq(fastFold(every), oldFold(every), 'fold identical to the old implementation for Latin text');
+eq(fastFold('İĞÜŞÖÇI ıiÂÎÛ'), 'igusoci iiaiu', 'fold turkish capitals');
+eq(fastFold('😀Aş').length, '😀Aş'.length, 'fold keeps UTF-16 length with emoji');
+const bigText = 'Allah tek ilahtır ŞİRK Egemen ıspanak '.repeat(15000); // ~570k characters
+const t0 = Date.now();
+fastFold(bigText);
+const ms = Date.now() - t0;
+if (ms > 400) { console.error('FAIL fold too slow', ms, 'ms'); process.exit(1); }
+const pre = foldChapters([{ title: 'a', text: 'Merhaba DÜNYA' }]);
+eq(pre, ['merhaba dunya'], 'foldChapters');
+eq(searchBook([{ title: 'a', text: 'Merhaba DÜNYA' }], 'dunya', 10, pre).length, 1, 'searchBook uses pre-folded text');
+import { searchAllAsync } from '../src/lib/searchAll';
+const a1 = await searchAllAsync(lib, 'şirk', () => false);
+eq(a1?.map((x) => x.bookId), ['a', 'b'], 'async search gives the same result');
+eq(await searchAllAsync(lib, 'şirk', () => true), null, 'async search stops when cancelled');
+console.log('fold 570k chars:', ms, 'ms');
+
 // ---- settings ----
 import { parseSettings, DEFAULTS } from '../src/lib/settingsModel';
 eq(parseSettings({}), DEFAULTS, 'defaults');
