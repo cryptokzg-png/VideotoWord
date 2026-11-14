@@ -239,7 +239,7 @@ const s = StyleSheet.create({
   nav: { height: 44, paddingHorizontal: 4, justifyContent: 'center' },
   menuTitle: { fontSize: 26, lineHeight: 30 },
   menuRow: { flexDirection: 'row', minHeight: 48, alignItems: 'center' },
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 32 },
+  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-start', paddingTop: 120, paddingHorizontal: 32 },
   dialog: { borderRadius: 14, padding: 20, gap: 12 },
   gotoInput: { borderWidth: 1, borderRadius: 10, padding: 10, fontSize: 18 },
 });

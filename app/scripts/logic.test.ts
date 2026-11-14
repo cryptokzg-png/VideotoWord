@@ -28,3 +28,17 @@ import { cleanCue } from '../src/lib/transcript';
 eq(cleanCue('[ ♪]'), '', 'music tag');
 eq(cleanCue('[Alkış] Merhaba ♪ dünya'), 'Merhaba dünya', 'noise inline');
 console.log('OK3');
+
+// regression: unpunctuated auto-captions must not become one giant paragraph / heading-only pages
+const longCues = Array.from({ length: 400 }, (_, i) => ({ start: i * 3, dur: 2.9, text: 'bu bir noktalama olmayan otomatik altyazı satırıdır numara ' + i }));
+const paras = toParagraphs(cleanCues(longCues));
+if (!paras.every((p) => p.length < 420)) { console.error('FAIL giant paragraph', Math.max(...paras.map((p) => p.length))); process.exit(1); }
+const chs = splitIntoChapters(paras);
+if (chs.length < 4) { console.error('FAIL too few chapters', chs.length); process.exit(1); }
+const pgs = paginate(chs);
+if (pgs.some((p) => p.startsWith('# ') && !p.includes('\n\n'))) { console.error('FAIL heading-only page'); process.exit(1); }
+if (!pgs.every((p) => p.length <= 800)) { console.error('FAIL page too long', Math.max(...pgs.map((p) => p.length))); process.exit(1); }
+// a single paragraph longer than a page must not leave the heading alone
+const big = paginate([{ title: 'T', text: 'kelime '.repeat(400) }]);
+if (big[0] === '# T' || !big[0].startsWith('# T\n\n')) { console.error('FAIL heading split', big[0].slice(0, 20)); process.exit(1); }
+console.log('OK4', 'paragraphs', paras.length, 'chapters', chs.length, 'pages', pgs.length);

@@ -32,8 +32,12 @@ export function cleanCues(cues: Cue[]): Cue[] {
 
 const PAUSE_SEC = 2.5;
 
-/** Join cues into paragraphs, breaking on long pauses or after sentence ends once long enough. */
-export function toParagraphs(cues: Cue[], minChars = 280): string[] {
+/**
+ * Join cues into paragraphs. Breaks on long pauses, on sentence ends once long enough,
+ * and — because auto captions have no punctuation — at a cue boundary once a paragraph
+ * reaches maxChars, so we never produce one giant wall of text.
+ */
+export function toParagraphs(cues: Cue[], minChars = 200, maxChars = 340): string[] {
   const paras: string[] = [];
   let cur = '';
   let prevEnd = 0;
@@ -46,14 +50,14 @@ export function toParagraphs(cues: Cue[], minChars = 280): string[] {
     if (cur && gap > PAUSE_SEC && cur.length >= minChars / 2) flush();
     cur += (cur ? ' ' : '') + c.text;
     prevEnd = c.start + c.dur;
-    if (cur.length >= minChars && /[.!?…]["')]?$/.test(cur)) flush();
+    if (cur.length >= maxChars || (cur.length >= minChars && /[.!?…]["')]?$/.test(cur))) flush();
   }
   flush();
   return paras;
 }
 
 /** Split paragraphs into chapters of roughly equal size (used when the video has no chapters). */
-export function splitIntoChapters(paragraphs: string[], targetChars = 1800): Chapter[] {
+export function splitIntoChapters(paragraphs: string[], targetChars = 4500): Chapter[] {
   const chapters: Chapter[] = [];
   let buf: string[] = [];
   let len = 0;
