@@ -10,6 +10,20 @@ YouTube linkini yapıştır (veya YouTube'dan "Paylaş" ile gönder) → altyaz�
 - Çıktı: EPUB (JSZip), PDF (expo-print)
 - Sayfa çevirme efekti: Reanimated + Skia / react-native-page-flip
 
+## Kitap boyutu ve ad etiketi
+Her video kısa bir kitap olur (birkaç sayfa). Sayfa sayısına göre kartta ve kitap detayında yazı olarak bir boyut etiketi gösterilir (eşikler taslak, ayarlanabilir):
+
+| Sayfa | Etiket |
+|---|---|
+| 1–4 | Mini kitap |
+| 5–12 | Kısa kitap |
+| 13–30 | Kitap |
+| 31+ | Büyük kitap |
+
+- Örnek gösterim: "Kısa kitap · 8 sayfa · 12 dk okuma"
+- Sayfa sayısı video süresine ve altyazı uzunluğuna bağlıdır
+- Çok kısa kitapta (Mini) Özet Kartı tek karta indirilir ya da eklenmez
+
 ## Referans kitaptan alınan özellikler
 **Okuyucu**
 - Üst çubuk: İçindekiler · kitap adı · Kapat
