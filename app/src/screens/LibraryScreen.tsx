@@ -1,22 +1,34 @@
-import { useCallback, useRef, useState, type ComponentRef } from 'react';
+import { useCallback, useEffect, useRef, useState, type ComponentRef } from 'react';
 import { Alert, Image, Platform, Pressable, Share, ToastAndroid, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../App';
-import { deleteBook, listBooks, listFavoriteQuotes, saveBook, setFavorite, setNoteFavorite } from '../db/db';
+import { deleteBook, listBooks, listBookTexts, listFavoriteQuotes, saveBook, setFavorite, setNoteFavorite } from '../db/db';
 import type { BookRow, Note } from '../types';
 import { highlightKey, shareText } from '../lib/notes';
 import { BookCard, ContinueCard } from '../components/BookCard';
 import { parseVideoId } from '../lib/youtube';
-import { fold } from '../lib/search';
+import { fold, splitByMatch } from '../lib/search';
+import { searchAll, type BookHits, type BookText } from '../lib/searchAll';
 import { buildBook } from '../lib/buildBook';
 import { sampleVideo } from '../lib/sample';
 import { serif, useTheme } from '../theme';
 import { progressOf } from '../db/db';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Library'>;
+
+/** Snippet with the matched word marked. */
+function Snippet({ text, query, color, mark }: { text: string; query: string; color: string; mark: string }) {
+  return (
+    <Text style={{ color, fontSize: 15, lineHeight: 22 }}>
+      {splitByMatch(text, query).map((p, i) =>
+        p.hit ? <Text key={i} style={{ backgroundColor: mark, fontWeight: '700' }}>{p.text}</Text> : p.text,
+      )}
+    </Text>
+  );
+}
 
 export default function LibraryScreen({ navigation }: Props) {
   const t = useTheme();
@@ -27,10 +39,17 @@ export default function LibraryScreen({ navigation }: Props) {
   const [filter, setFilter] = useState<'all' | 'fav' | 'quotes'>('all');
   const [quotes, setQuotes] = useState<Note[]>([]);
   const input = useRef<ComponentRef<typeof TextInput>>(null);
+  const searchInput = useRef<ComponentRef<typeof TextInput>>(null);
+  const scroll = useRef<ComponentRef<typeof ScrollView>>(null);
+  const textsCache = useRef<BookText[] | null>(null); // full text of every book, loaded on first search
+  const [groups, setGroups] = useState<BookHits[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [clip, setClip] = useState<string | null>(null); // video id found on the clipboard
   const dismissed = useRef<Set<string>>(new Set());
 
   const load = useCallback(() => {
+    textsCache.current = null; // books may have changed
     listFavoriteQuotes().then(setQuotes).catch(() => {});
     listBooks().then((rows) => {
       setBooks(rows);
@@ -82,6 +101,38 @@ export default function LibraryScreen({ navigation }: Props) {
   const favCount = books.filter((b) => b.favorite).length;
   const flat = filter === 'fav' || !!query; // searching or viewing favorites: one simple list
   const shownQuotes = quotes.filter((n) => !query || fold(`${n.quote} ${n.bookTitle ?? ''}`).includes(query));
+
+  const contentQuery = filter !== 'quotes' && query.length >= 2;
+
+  // search the text of every book (debounced; the texts are loaded once and cached)
+  useEffect(() => {
+    if (!contentQuery) {
+      setGroups([]);
+      setSearching(false);
+      return;
+    }
+    setSearching(true);
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      try {
+        const data = textsCache.current ?? (await listBookTexts());
+        textsCache.current = data;
+        if (cancelled) return;
+        const allowed = new Set(books.filter((b) => filter === 'all' || b.favorite).map((b) => b.id));
+        setGroups(searchAll(data.filter((b) => allowed.has(b.id)), q.trim()));
+      } catch {
+        if (!cancelled) setGroups([]);
+      } finally {
+        if (!cancelled) setSearching(false);
+      }
+    }, 280);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [q, filter, books, contentQuery]);
+
+  const totalHits = groups.reduce((a, g) => a + g.hits.length, 0);
 
   // most recently opened-but-unfinished book, else none
   const reading = books.find((b) => progressOf(b) > 0 && progressOf(b) < 0.97);
@@ -139,7 +190,7 @@ export default function LibraryScreen({ navigation }: Props) {
         </View>
       )}
 
-      <ScrollView contentContainerStyle={s.content}>
+      <ScrollView ref={scroll} contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
         {books.length === 0 && (
           <View style={s.empty}>
             <Text style={[s.emptyTitle, { color: t.text, fontFamily: serif }]}>Henüz kitap yok</Text>
@@ -155,12 +206,13 @@ export default function LibraryScreen({ navigation }: Props) {
         {books.length > 0 && (
           <>
             <TextInput
+              ref={searchInput}
               value={q}
               onChangeText={setQ}
-              placeholder="Kitaplarda ara"
+              placeholder="Kitap adı veya kitapların içinde ara"
               placeholderTextColor={t.muted}
               style={[s.search, { backgroundColor: t.surface, borderColor: t.border, color: t.text }]}
-              accessibilityLabel="Kitaplarda ara"
+              accessibilityLabel="Kitap adı veya kitapların içinde ara"
               returnKeyType="search"
             />
             <View style={s.chips}>
@@ -243,7 +295,60 @@ export default function LibraryScreen({ navigation }: Props) {
                 onToggleFavorite={() => toggleFav(b)}
               />
             ))}
-            {filtered.length === 0 && (
+            {contentQuery && (
+              <>
+                {searching ? (
+                  <Text style={{ color: t.muted, marginTop: 12 }}>Kitapların içinde aranıyor…</Text>
+                ) : (
+                  groups.length > 0 && (
+                    <Text style={[s.label, { color: t.muted, marginTop: 14 }]}>
+                      KİTAP İÇİNDE · {groups.length} KİTAPTA {totalHits}{groups.some((g) => g.capped) ? '+' : ''} SONUÇ
+                    </Text>
+                  )
+                )}
+                {!searching && groups.map((g) => {
+                  const open = expanded.has(g.bookId);
+                  const shown = open ? g.hits : g.hits.slice(0, 3);
+                  return (
+                    <View key={g.bookId} style={[s.hitCard, { backgroundColor: t.surface, borderColor: t.border }]}>
+                      <View style={s.hitHead}>
+                        <Text style={{ color: t.text, fontFamily: serif, fontWeight: '700', fontSize: 16, flex: 1 }} numberOfLines={1}>{g.title}</Text>
+                        <Text style={{ color: t.primary, fontWeight: '700', fontSize: 12 }}>{g.hits.length}{g.capped ? '+' : ''} sonuç</Text>
+                      </View>
+                      {shown.map((h, k) => (
+                        <Pressable
+                          key={k}
+                          onPress={() => navigation.navigate('Reader', { id: g.bookId, pos: h.pos, hl: q.trim() })}
+                          style={[s.hitRow, { borderColor: t.border }]}
+                          accessibilityRole="button"
+                          accessibilityLabel={`${g.title}, bölüm ${h.chapter + 1}: ${h.snippet}`}
+                        >
+                          <Text style={{ color: t.muted, fontSize: 12, marginBottom: 2 }}>Bölüm {h.chapter + 1}</Text>
+                          <Snippet text={h.snippet} query={q.trim()} color={t.text} mark={t.accent + '66'} />
+                        </Pressable>
+                      ))}
+                      {g.hits.length > 3 && (
+                        <Pressable
+                          onPress={() =>
+                            setExpanded((cur) => {
+                              const next = new Set(cur);
+                              if (next.has(g.bookId)) next.delete(g.bookId);
+                              else next.add(g.bookId);
+                              return next;
+                            })
+                          }
+                          style={s.hitMore}
+                          accessibilityRole="button"
+                        >
+                          <Text style={{ color: t.primary, fontWeight: '700' }}>{open ? 'Daha az göster' : `+${g.hits.length - 3} sonuç daha`}</Text>
+                        </Pressable>
+                      )}
+                    </View>
+                  );
+                })}
+              </>
+            )}
+            {filtered.length === 0 && !(contentQuery && (searching || groups.length > 0)) && (
               <Text style={{ color: t.muted, textAlign: 'center', marginTop: 24 }}>
                 {filter === 'fav' && !query ? 'Henüz favori kitap yok. Kitaplardaki ☆ işaretine dokun.' : 'Sonuç bulunamadı.'}
               </Text>
@@ -304,6 +409,13 @@ export default function LibraryScreen({ navigation }: Props) {
         <Pressable style={s.tab} accessibilityRole="tab" accessibilityState={{ selected: true }}>
           <Text style={{ color: t.primary, fontWeight: '700', fontSize: 12 }}>Kütüphane</Text>
         </Pressable>
+        <Pressable
+          style={s.tab}
+          onPress={() => { scroll.current?.scrollTo({ y: 0, animated: true }); setTimeout(() => searchInput.current?.focus(), 150); }}
+          accessibilityRole="tab"
+        >
+          <Text style={{ color: t.muted, fontWeight: '600', fontSize: 12 }}>Ara</Text>
+        </Pressable>
         <Pressable style={s.tab} onPress={() => input.current?.focus()} accessibilityRole="tab">
           <Text style={{ color: t.muted, fontWeight: '600', fontSize: 12 }}>Ekle</Text>
         </Pressable>
@@ -340,5 +452,9 @@ const s = StyleSheet.create({
   emptyTitle: { fontSize: 20, fontWeight: '700' },
   demo: { borderWidth: 1.5, borderRadius: 12, paddingVertical: 10, paddingHorizontal: 18, marginTop: 8 },
   tabs: { flexDirection: 'row', justifyContent: 'space-around', borderTopWidth: 1 },
-  tab: { minWidth: 96, height: 56, alignItems: 'center', justifyContent: 'center' },
+  tab: { minWidth: 72, height: 56, alignItems: 'center', justifyContent: 'center' },
+  hitCard: { borderWidth: 1, borderRadius: 16, padding: 14, gap: 4 },
+  hitHead: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
+  hitRow: { paddingVertical: 10, borderTopWidth: 1 },
+  hitMore: { minHeight: 44, justifyContent: 'center' },
 });

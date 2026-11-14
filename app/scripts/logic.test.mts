@@ -139,6 +139,21 @@ eq(tapWord({ a: 4, b: 4 }, 2), { a: 2, b: 4 }, 'tap before grows backward');
 eq(tapWord({ a: 2, b: 7 }, 9), { a: 2, b: 9 }, 'third tap keeps growing');
 eq(tapWord({ a: 2, b: 7 }, 5), { a: 5, b: 5 }, 'tap inside restarts');
 
+// ---- search across all books ----
+import { searchAll } from '../src/lib/searchAll';
+const lib = [
+  { id: 'a', title: 'Birinci', chapters: [{ title: 'B1', text: 'Şirk koşmak büyük bir günahtır. Şirk nedir?' }] },
+  { id: 'b', title: 'İkinci', chapters: [{ title: 'B1', text: 'bu kitapta hiçbiri yok' }, { title: 'B2', text: 'SIRK değil ama şirk var' }] },
+  { id: 'c', title: 'Üçüncü', chapters: [{ title: 'B1', text: 'alakasız metin' }] },
+];
+const all = searchAll(lib, 'şirk');
+eq(all.map((x) => x.bookId), ['a', 'b'], 'books without matches are left out, most hits first');
+eq(all[0].hits.length, 2, 'two hits in book a');
+eq(all[1].hits[0].chapter, 1, 'hit chapter index in book b');
+eq(searchAll(lib, 'sirk').length, 2, 'ş/s insensitive: matches SIRK and şirk');
+eq(searchAll(lib, 'x').length, 0, 'too short');
+eq(searchAll(lib, 'şirk', 1)[0].capped, true, 'capped flag');
+
 // ---- settings ----
 import { parseSettings, DEFAULTS } from '../src/lib/settingsModel';
 eq(parseSettings({}), DEFAULTS, 'defaults');

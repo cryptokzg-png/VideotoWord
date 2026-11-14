@@ -1,5 +1,5 @@
 import * as SQLite from 'expo-sqlite';
-import type { Book, BookRow, Note } from '../types';
+import type { Book, BookRow, Chapter, Note } from '../types';
 
 let dbPromise: Promise<SQLite.SQLiteDatabase> | null = null;
 
@@ -174,4 +174,11 @@ export async function listFavoriteQuotes(): Promise<Note[]> {
     `SELECT n.*, b.title AS bookTitle FROM notes n JOIN books b ON b.id = n.bookId
      WHERE n.favorite = 1 ORDER BY n.createdAt DESC`,
   );
+}
+
+/** Id, title and full chapter text of every book (used by the all-books search). */
+export async function listBookTexts(): Promise<{ id: string; title: string; chapters: Chapter[] }[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<{ id: string; title: string; chapters: string }>('SELECT id, title, chapters FROM books');
+  return rows.map((r) => ({ id: r.id, title: r.title, chapters: JSON.parse(r.chapters) as Chapter[] }));
 }
