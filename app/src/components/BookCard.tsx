@@ -4,10 +4,26 @@ import { describeBook } from '../lib/sizeLabel';
 import { coverColor, serif, useTheme } from '../theme';
 import { progressOf } from '../db/db';
 
-type Props = { book: BookRow; onPress: () => void; onLongPress?: () => void };
+type Props = { book: BookRow; onPress: () => void; onLongPress?: () => void; onToggleFavorite?: () => void };
+
+function Star({ on, onPress, title }: { on: boolean; onPress: () => void; title: string }) {
+  const t = useTheme();
+  return (
+    <Pressable
+      onPress={onPress}
+      hitSlop={6}
+      style={s.star}
+      accessibilityRole="button"
+      accessibilityLabel={on ? `${title} favorilerden çıkar` : `${title} favorilere ekle`}
+      accessibilityState={{ selected: on }}
+    >
+      <Text style={{ fontSize: 24, color: on ? t.accent : t.muted }}>{on ? '★' : '☆'}</Text>
+    </Pressable>
+  );
+}
 
 /** Compact list row (A: Kâğıt ve Mürekkep). */
-export function BookCard({ book, onPress, onLongPress }: Props) {
+export function BookCard({ book, onPress, onLongPress, onToggleFavorite }: Props) {
   const t = useTheme();
   return (
     <Pressable
@@ -22,12 +38,13 @@ export function BookCard({ book, onPress, onLongPress }: Props) {
         <Text style={[s.rowTitle, { color: t.text, fontFamily: serif }]} numberOfLines={1}>{book.title}</Text>
         <Text style={{ color: t.muted, fontSize: 12 }} numberOfLines={1}>{describeBook(book.pageCount)}</Text>
       </View>
+      {onToggleFavorite && <Star on={!!book.favorite} onPress={onToggleFavorite} title={book.title} />}
     </Pressable>
   );
 }
 
 /** Featured "continue reading" card. */
-export function ContinueCard({ book, onPress, onLongPress }: { book: BookRow; onPress: () => void; onLongPress?: () => void }) {
+export function ContinueCard({ book, onPress, onLongPress, onToggleFavorite }: Props) {
   const t = useTheme();
   const progress = progressOf(book);
   return (
@@ -43,7 +60,10 @@ export function ContinueCard({ book, onPress, onLongPress }: { book: BookRow; on
       </View>
       <View style={s.info}>
         <View>
-          <Text style={[s.title, { color: t.text, fontFamily: serif }]} numberOfLines={2}>{book.title}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 4 }}>
+            <Text style={[s.title, { color: t.text, fontFamily: serif, flex: 1 }]} numberOfLines={2}>{book.title}</Text>
+            {onToggleFavorite && <Star on={!!book.favorite} onPress={onToggleFavorite} title={book.title} />}
+          </View>
           <Text style={{ color: t.muted, fontSize: 13 }} numberOfLines={1}>{book.author}</Text>
           <Text style={[s.size, { color: t.primary }]}>{describeBook(book.pageCount)}</Text>
         </View>
@@ -63,6 +83,7 @@ export function ContinueCard({ book, onPress, onLongPress }: { book: BookRow; on
 const s = StyleSheet.create({
   row: { flexDirection: 'row', gap: 12, alignItems: 'center', borderRadius: 14, borderWidth: 1, padding: 10 },
   miniCover: { width: 44, height: 58, borderRadius: 4 },
+  star: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', marginRight: -6, marginTop: -4 },
   rowTitle: { fontSize: 16, fontWeight: '700' },
   featured: { flexDirection: 'row', gap: 14, borderRadius: 16, borderWidth: 1, padding: 12 },
   cover: { width: 78, height: 104, borderRadius: 6, padding: 8, justifyContent: 'flex-end' },

@@ -21,7 +21,8 @@ function getDb() {
           createdAt INTEGER NOT NULL,
           lastPage INTEGER NOT NULL DEFAULT 0,
           lastPos INTEGER NOT NULL DEFAULT 0,
-          totalChars INTEGER NOT NULL DEFAULT 0
+          totalChars INTEGER NOT NULL DEFAULT 0,
+          favorite INTEGER NOT NULL DEFAULT 0
         );
         CREATE TABLE IF NOT EXISTS settings (
           key TEXT PRIMARY KEY NOT NULL,
@@ -34,7 +35,7 @@ function getDb() {
         );
       `);
       // upgrade databases created by older versions
-      for (const col of ['lastPos', 'totalChars']) {
+      for (const col of ['lastPos', 'totalChars', 'favorite']) {
         try {
           await db.execAsync(`ALTER TABLE books ADD COLUMN ${col} INTEGER NOT NULL DEFAULT 0`);
         } catch {
@@ -62,7 +63,7 @@ export async function saveBook(b: Book) {
 export async function listBooks(): Promise<BookRow[]> {
   const db = await getDb();
   return db.getAllAsync<BookRow>(
-    `SELECT id,title,author,url,thumbnail,durationSec,pageCount,createdAt,lastPage,lastPos,totalChars
+    `SELECT id,title,author,url,thumbnail,durationSec,pageCount,createdAt,lastPage,lastPos,totalChars,favorite
      FROM books ORDER BY createdAt DESC`,
   );
 }
@@ -78,6 +79,11 @@ export async function deleteBook(id: string) {
   const db = await getDb();
   await db.runAsync('DELETE FROM books WHERE id = ?', id);
   await db.runAsync('DELETE FROM marks WHERE bookId = ?', id);
+}
+
+export async function setFavorite(id: string, on: boolean) {
+  const db = await getDb();
+  await db.runAsync('UPDATE books SET favorite = ? WHERE id = ?', on ? 1 : 0, id);
 }
 
 export async function setLastPos(id: string, pos: number) {

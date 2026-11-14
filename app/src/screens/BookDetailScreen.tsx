@@ -2,10 +2,10 @@ import { useEffect, useState } from 'react';
 import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../App';
-import { deleteBook, getBook } from '../db/db';
+import { deleteBook, getBook, setFavorite } from '../db/db';
 import type { Book } from '../types';
 import { describeBook } from '../lib/sizeLabel';
-import { exportEpub, exportPdf } from '../lib/shareBook';
+import { exportPdf } from '../lib/shareBook';
 import { coverColor, serif, useIsDark, useTheme } from '../theme';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'BookDetail'>;
@@ -56,6 +56,20 @@ export default function BookDetailScreen({ route, navigation }: Props) {
 
       <View style={s.row}>
         <Pressable
+          onPress={async () => {
+            const on = !book.favorite;
+            await setFavorite(book.id, on);
+            setBook({ ...book, favorite: on ? 1 : 0 });
+          }}
+          style={[s.secondary, { borderColor: book.favorite ? t.accent : t.border, backgroundColor: t.surface }]}
+          accessibilityRole="button"
+          accessibilityState={{ selected: !!book.favorite }}
+        >
+          <Text style={{ color: book.favorite ? t.accent : t.text, fontWeight: '600' }}>
+            {book.favorite ? '★ Favorilerde' : '☆ Favorilere ekle'}
+          </Text>
+        </Pressable>
+        <Pressable
           onPress={() => Linking.openURL(book.url).catch(() => Alert.alert('Açılamadı'))}
           style={[s.secondary, { borderColor: t.border, backgroundColor: t.surface }]}
           accessibilityRole="link"
@@ -65,20 +79,12 @@ export default function BookDetailScreen({ route, navigation }: Props) {
       </View>
       <View style={s.row}>
         <Pressable
-          onPress={() => run('EPUB hazırlanıyor…', () => exportEpub(book))}
-          disabled={!!busy}
-          style={[s.secondary, { borderColor: t.border, backgroundColor: t.surface, opacity: busy ? 0.6 : 1 }]}
-          accessibilityRole="button"
-        >
-          <Text style={{ color: t.text, fontWeight: '600' }}>EPUB</Text>
-        </Pressable>
-        <Pressable
           onPress={() => run('PDF hazırlanıyor…', () => exportPdf(book))}
           disabled={!!busy}
           style={[s.secondary, { borderColor: t.border, backgroundColor: t.surface, opacity: busy ? 0.6 : 1 }]}
           accessibilityRole="button"
         >
-          <Text style={{ color: t.text, fontWeight: '600' }}>PDF</Text>
+          <Text style={{ color: t.text, fontWeight: '600' }}>PDF olarak dışa aktar</Text>
         </Pressable>
       </View>
       {busy && <Text style={{ color: t.muted }}>{busy}</Text>}

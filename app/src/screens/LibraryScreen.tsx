@@ -5,10 +5,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../App';
-import { deleteBook, listBooks, saveBook } from '../db/db';
+import { deleteBook, listBooks, saveBook, setFavorite } from '../db/db';
 import type { BookRow } from '../types';
 import { BookCard, ContinueCard } from '../components/BookCard';
 import { parseVideoId } from '../lib/youtube';
+import { fold } from '../lib/search';
 import { buildBook } from '../lib/buildBook';
 import { sampleVideo } from '../lib/sample';
 import { serif, useTheme } from '../theme';
@@ -21,6 +22,8 @@ export default function LibraryScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
   const [books, setBooks] = useState<BookRow[]>([]);
   const [link, setLink] = useState('');
+  const [q, setQ] = useState('');
+  const [filter, setFilter] = useState<'all' | 'fav'>('all');
   const input = useRef<ComponentRef<typeof TextInput>>(null);
   const [clip, setClip] = useState<string | null>(null); // video id found on the clipboard
   const dismissed = useRef<Set<string>>(new Set());
@@ -63,9 +66,22 @@ export default function LibraryScreen({ navigation }: Props) {
       { text: 'Sil', style: 'destructive', onPress: async () => { await deleteBook(b.id); load(); } },
     ]);
 
+  const toggleFav = async (b: BookRow) => {
+    await setFavorite(b.id, !b.favorite);
+    load();
+  };
+
+  const query = fold(q.trim());
+  const filtered = books.filter(
+    (b) => (filter === 'all' || b.favorite) && (!query || fold(`${b.title} ${b.author}`).includes(query)),
+  );
+  const favCount = books.filter((b) => b.favorite).length;
+  const flat = filter === 'fav' || !!query; // searching or viewing favorites: one simple list
+
   // most recently opened-but-unfinished book, else none
   const reading = books.find((b) => progressOf(b) > 0 && progressOf(b) < 0.97);
-  const rest = books.filter((b) => b !== reading);
+  const favorites = books.filter((b) => b.favorite && b !== reading);
+  const others = books.filter((b) => !b.favorite && b !== reading);
 
   return (
     <View style={[s.root, { backgroundColor: t.bg }]}>
@@ -131,33 +147,100 @@ export default function LibraryScreen({ navigation }: Props) {
           </View>
         )}
 
-        {reading && (
+        {books.length > 0 && (
           <>
-            <Text style={[s.label, { color: t.muted }]}>OKUMAYA DEVAM ET</Text>
-            <ContinueCard
-              book={reading}
-              onPress={() => navigation.navigate('Reader', { id: reading.id })}
-              onLongPress={() => confirmDelete(reading)}
+            <TextInput
+              value={q}
+              onChangeText={setQ}
+              placeholder="Kitaplarda ara"
+              placeholderTextColor={t.muted}
+              style={[s.search, { backgroundColor: t.surface, borderColor: t.border, color: t.text }]}
+              accessibilityLabel="Kitaplarda ara"
+              returnKeyType="search"
             />
+            <View style={s.chips}>
+              {([['all', `Tümü (${books.length})`], ['fav', `★ Favoriler (${favCount})`]] as const).map(([key, label]) => {
+                const on = filter === key;
+                return (
+                  <Pressable
+                    key={key}
+                    onPress={() => setFilter(key)}
+                    style={[s.chip, { backgroundColor: on ? t.accent : 'transparent', borderColor: on ? t.accent : t.border }]}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: on }}
+                  >
+                    <Text style={{ color: on ? '#142041' : t.text, fontWeight: on ? '800' : '500' }}>{label}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
           </>
         )}
 
-        {rest.length > 0 && (
+        {flat ? (
           <>
-            <Text style={[s.label, { color: t.muted }]}>{reading ? 'SON EKLENENLER' : 'KİTAPLARIM'}</Text>
-            {rest.map((b) => (
+            {filtered.map((b) => (
               <BookCard
                 key={b.id}
                 book={b}
                 onPress={() => navigation.navigate('BookDetail', { id: b.id })}
                 onLongPress={() => confirmDelete(b)}
+                onToggleFavorite={() => toggleFav(b)}
               />
             ))}
+            {filtered.length === 0 && (
+              <Text style={{ color: t.muted, textAlign: 'center', marginTop: 24 }}>
+                {filter === 'fav' && !query ? 'Henüz favori kitap yok. Kitaplardaki ☆ işaretine dokun.' : 'Sonuç bulunamadı.'}
+              </Text>
+            )}
+          </>
+        ) : (
+          <>
+            {reading && (
+              <>
+                <Text style={[s.label, { color: t.muted }]}>OKUMAYA DEVAM ET</Text>
+                <ContinueCard
+                  book={reading}
+                  onPress={() => navigation.navigate('Reader', { id: reading.id })}
+                  onLongPress={() => confirmDelete(reading)}
+                  onToggleFavorite={() => toggleFav(reading)}
+                />
+              </>
+            )}
+            {favorites.length > 0 && (
+              <>
+                <Text style={[s.label, { color: t.muted }]}>FAVORİLER</Text>
+                {favorites.map((b) => (
+                  <BookCard
+                    key={b.id}
+                    book={b}
+                    onPress={() => navigation.navigate('BookDetail', { id: b.id })}
+                    onLongPress={() => confirmDelete(b)}
+                    onToggleFavorite={() => toggleFav(b)}
+                  />
+                ))}
+              </>
+            )}
+            {others.length > 0 && (
+              <>
+                <Text style={[s.label, { color: t.muted }]}>{reading || favorites.length ? 'DİĞER KİTAPLAR' : 'KİTAPLARIM'}</Text>
+                {others.map((b) => (
+                  <BookCard
+                    key={b.id}
+                    book={b}
+                    onPress={() => navigation.navigate('BookDetail', { id: b.id })}
+                    onLongPress={() => confirmDelete(b)}
+                    onToggleFavorite={() => toggleFav(b)}
+                  />
+                ))}
+              </>
+            )}
           </>
         )}
+
         {books.length > 0 && (
           <Text style={{ color: t.muted, fontSize: 12, textAlign: 'center', marginTop: 8 }}>
-            Bir kitabı silmek için üzerine uzun bas ya da kitabı açıp "Kitabı sil"e dokun.
+            Silmek için bir kitaba uzun bas ya da kitabı açıp "Kitabı sil"e dokun.
           </Text>
         )}
       </ScrollView>
@@ -191,6 +274,9 @@ const s = StyleSheet.create({
   bannerBtn: { minHeight: 44, minWidth: 56, paddingHorizontal: 10, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   content: { padding: 20, gap: 10 },
   label: { fontSize: 11, letterSpacing: 1.4, fontWeight: '600', marginTop: 6 },
+  search: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, height: 46 },
+  chips: { flexDirection: 'row', gap: 8, marginBottom: 4 },
+  chip: { minHeight: 40, paddingHorizontal: 14, borderRadius: 20, borderWidth: 1, justifyContent: 'center' },
   empty: { alignItems: 'center', gap: 10, paddingTop: 32, paddingHorizontal: 24 },
   emptyTitle: { fontSize: 20, fontWeight: '700' },
   demo: { borderWidth: 1.5, borderRadius: 12, paddingVertical: 10, paddingHorizontal: 18, marginTop: 8 },

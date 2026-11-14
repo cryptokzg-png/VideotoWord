@@ -96,23 +96,20 @@ const sh3 = searchBook(sc, 'paragraf');
 eq(sh3[0].pos, sc[0].text.slice(0, sc[0].text.indexOf('paragraf')).replace(/\s/g, '').length, 'search pos = non-space offset');
 eq(searchBook(sc, 'a').length, 0, 'min length 2');
 
-// ---- epub ----
-import JSZip from 'jszip';
-import { buildEpub, buildPdfHtml, esc } from '../src/lib/export';
-import { writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+// ---- pdf html ----
+import { buildPdfHtml, esc } from '../src/lib/export';
 const bk = { id: 'abc', title: 'Test & "Kitap" <1>', author: 'Yazar', url: 'https://youtu.be/abc', chapters: [{ title: 'Bölüm 1', text: 'Merhaba <dünya> & herkes.\n\nİkinci.' }] };
-const epub = await buildEpub(bk);
-writeFileSync(join(tmpdir(), 'baris-kitaplik-test.epub'), epub);
-const z = await JSZip.loadAsync(epub);
-const names = Object.keys(z.files);
-eq(names[0], 'mimetype', 'mimetype first');
-eq(await z.file('mimetype')!.async('string'), 'application/epub+zip', 'mimetype content');
-for (const n of ['META-INF/container.xml', 'OEBPS/content.opf', 'OEBPS/nav.xhtml', 'OEBPS/ch1.xhtml', 'OEBPS/title.xhtml']) if (!z.file(n)) { console.error('FAIL missing', n); process.exit(1); }
-eq((await z.file('OEBPS/ch1.xhtml')!.async('string')).includes('&lt;dünya&gt; &amp; herkes'), true, 'escaped body');
 eq(esc('<&">'), '&lt;&amp;&quot;&gt;', 'esc');
-eq(buildPdfHtml(bk).includes('Test &amp; &quot;Kitap&quot; &lt;1&gt;'), true, 'pdf html escaped');
+eq(buildPdfHtml(bk).includes('Test &amp; &quot;Kitap&quot; &lt;1&gt;'), true, 'pdf html escaped title');
+eq(buildPdfHtml(bk).includes('&lt;dünya&gt; &amp; herkes'), true, 'pdf html escaped body');
+
+// ---- highlight split ----
+import { splitByMatch } from '../src/lib/search';
+const sp = splitByMatch('Merhaba ISPARTA güzel isparta', 'ısparta');
+eq(sp.map((x) => x.text).join(''), 'Merhaba ISPARTA güzel isparta', 'split keeps all text');
+eq(sp.filter((x) => x.hit).map((x) => x.text), ['ISPARTA', 'isparta'], 'split marks matches');
+eq(splitByMatch('abc', 'x').length, 1, 'no match -> one piece');
+eq(splitByMatch('abc', 'a')[0].hit, false, 'query shorter than 2 ignored');
 
 // ---- settings ----
 import { parseSettings, DEFAULTS } from '../src/lib/settingsModel';

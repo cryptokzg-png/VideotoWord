@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentRef, type ReactNode } from 'react';
 import {
   ActivityIndicator, Alert, Image, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View,
 } from 'react-native';
@@ -7,8 +7,8 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../App';
 import { getBook, getMarks, setLastPos, setPageCount, toggleMark } from '../db/db';
 import { COVER, pageForPos, pageStarts, pagesFromLines } from '../lib/layout';
-import { searchBook, type SearchHit } from '../lib/search';
-import { exportEpub, exportPdf } from '../lib/shareBook';
+import { searchBook, splitByMatch, type SearchHit } from '../lib/search';
+import { exportPdf, sharePageImage } from '../lib/shareBook';
 import { describeBook } from '../lib/sizeLabel';
 import type { Book } from '../types';
 import { FONT_FAMILIES, FONT_SCALES, useSettings } from '../settings';
@@ -18,8 +18,8 @@ import { Measurer } from '../components/Measurer';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Reader'>;
 
-const NIGHT = { bg: '#0B1228', card: '#121B3A', border: '#2A3566', text: '#DDE3F5', head: '#FFFFFF', muted: '#9AA6C8', accent: '#D4AF37', onAccent: '#1B1204' };
-const DAY = { bg: '#F5F2EA', card: '#FFFFFF', border: '#E3DED5', text: '#141B34', head: '#141B34', muted: '#5F6578', accent: '#1E3A8A', onAccent: '#FFFFFF' };
+const NIGHT = { bg: '#0B1228', card: '#121B3A', border: '#2A3566', text: '#DDE3F5', head: '#FFFFFF', muted: '#9AA6C8', accent: '#D4AF37', onAccent: '#1B1204', mark: '#6B5A12' };
+const DAY = { bg: '#F5F2EA', card: '#FFFFFF', border: '#E3DED5', text: '#141B34', head: '#141B34', muted: '#5F6578', accent: '#1E3A8A', onAccent: '#FFFFFF', mark: '#FFE58A' };
 type Palette = typeof NIGHT;
 
 const PAD_X = 28;
@@ -38,13 +38,15 @@ function Heading({ chapter, title, c, family }: { chapter: number; title: string
 
 type TextStyleSpec = { fontFamily: string; fontSize: number; lineHeight: number };
 
-function TextPage({ text, chapter, c, width, height, spec }: {
-  text: string; chapter: number; c: Palette; width: number; height: number; spec: TextStyleSpec;
+function TextPage({ text, chapter, c, width, height, spec, highlight }: {
+  text: string; chapter: number; c: Palette; width: number; height: number; spec: TextStyleSpec; highlight: string;
 }) {
   const isHeading = text.startsWith('# ');
   const sep = text.indexOf('\n\n');
   const title = isHeading ? text.slice(2, sep) : null;
   const body = isHeading ? text.slice(sep + 2) : text;
+  // highlighting only changes the background, so it never changes the line breaks
+  const pieces = highlight ? splitByMatch(body, highlight) : null;
   return (
     <View style={{ width, height, paddingHorizontal: PAD_X, paddingTop: PAD_TOP, overflow: 'hidden' }}>
       {title !== null && <Heading chapter={chapter} title={title} c={c} family={spec.fontFamily} />}
@@ -54,7 +56,9 @@ function TextPage({ text, chapter, c, width, height, spec }: {
         android_hyphenationFrequency="none"
         style={{ color: c.text, ...spec }}
       >
-        {body}
+        {pieces
+          ? pieces.map((p, i) => (p.hit ? <Text key={i} style={{ backgroundColor: c.mark }}>{p.text}</Text> : p.text))
+          : body}
       </Text>
     </View>
   );
@@ -84,6 +88,46 @@ function CoverPage({ book, pageCount, c, width, height, family }: {
   );
 }
 
+/** Bottom sheet ("açılır pencere"). */
+function Sheet({ visible, onClose, title, c, children }: {
+  visible: boolean; onClose: () => void; title: string; c: Palette; children: ReactNode;
+}) {
+  const insets = useSafeAreaInsets();
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={s.sheetRoot}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Kapat" accessibilityRole="button">
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.55)' }]} />
+        </Pressable>
+        <View style={[s.sheet, { backgroundColor: c.card, borderColor: c.border, paddingBottom: Math.max(insets.bottom, 12) }]}>
+          <View style={[s.handle, { backgroundColor: c.border }]} />
+          <View style={s.sheetHead}>
+            <Text style={{ color: c.head, fontWeight: '800', fontSize: 18, flex: 1 }}>{title}</Text>
+            <Pressable onPress={onClose} accessibilityRole="button" style={s.sheetClose}>
+              <Text style={{ color: c.accent, fontWeight: '700' }}>Kapat</Text>
+            </Pressable>
+          </View>
+          <ScrollView keyboardShouldPersistTaps="handled">{children}</ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+function Row({ label, hint, right, onPress, c, accent, bold, disabled }: {
+  label: string; hint?: string; right?: string; onPress: () => void; c: Palette; accent?: boolean; bold?: boolean; disabled?: boolean;
+}) {
+  return (
+    <Pressable onPress={onPress} disabled={disabled} style={[s.row, { opacity: disabled ? 0.5 : 1 }]} accessibilityRole="button">
+      <View style={{ flex: 1 }}>
+        <Text style={{ color: accent ? c.accent : c.text, fontWeight: bold ? '800' : '500', fontSize: 16 }}>{label}</Text>
+        {!!hint && <Text numberOfLines={1} style={{ color: c.muted, fontSize: 13, marginTop: 2 }}>{hint}</Text>}
+      </View>
+      {!!right && <Text style={{ color: c.muted, marginLeft: 12 }}>{right}</Text>}
+    </Pressable>
+  );
+}
+
 export default function ReaderScreen({ route, navigation }: Props) {
   const { settings, update } = useSettings();
   const isDark = useIsDark();
@@ -95,16 +139,18 @@ export default function ReaderScreen({ route, navigation }: Props) {
   const [page, setPage] = useState(0);
   const [large, setLarge] = useState(false);
   const [marks, setMarks] = useState<number[]>([]);
-  const [menu, setMenu] = useState(false);
+  const [sheet, setSheet] = useState<null | 'menu' | 'chapters' | 'marks'>(null);
   const [goto, setGoto] = useState(false);
   const [gotoText, setGotoText] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState('');
+  const [highlight, setHighlight] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
   const [area, setArea] = useState({ w: 0, h: 0 });
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const flip = useRef<FlipHandle>(null);
+  const shot = useRef<ComponentRef<typeof View>>(null);
   const posRef = useRef(0); // reading position (non-space chars); survives re-layout
   const startedFresh = useRef(true);
 
@@ -137,8 +183,7 @@ export default function ReaderScreen({ route, navigation }: Props) {
   const onMeasured = useCallback(
     (lines: string[][], heads: number[]) => {
       if (!book) return;
-      const next = pagesFromLines(book.chapters, lines, heads, spec.lineHeight, contentH);
-      setPages(next);
+      setPages(pagesFromLines(book.chapters, lines, heads, spec.lineHeight, contentH));
     },
     [book, spec.lineHeight, contentH],
   );
@@ -169,8 +214,7 @@ export default function ReaderScreen({ route, navigation }: Props) {
   const jump = useCallback(
     (i: number) => {
       if (!book || !pages.length) return;
-      const idx = Math.max(0, Math.min(pages.length - 1, i));
-      onIndexChange(idx);
+      onIndexChange(Math.max(0, Math.min(pages.length - 1, i)));
     },
     [book, pages.length, onIndexChange],
   );
@@ -194,10 +238,15 @@ export default function ReaderScreen({ route, navigation }: Props) {
     try {
       await fn();
     } catch (e: any) {
-      Alert.alert('Dışa aktarılamadı', String(e?.message ?? e));
+      Alert.alert('Paylaşılamadı', String(e?.message ?? e));
     } finally {
       setBusy(null);
     }
+  };
+
+  const closeAnd = (fn: () => void) => {
+    setSheet(null);
+    setTimeout(fn, 250);
   };
 
   if (!book) return <View style={[s.root, { backgroundColor: c.bg }]} />;
@@ -212,12 +261,13 @@ export default function ReaderScreen({ route, navigation }: Props) {
   const chapterPages = pages
     .map((p, i) => (p.startsWith('# ') ? { i, title: p.slice(2, p.indexOf('\n\n')) } : null))
     .filter((x): x is { i: number; title: string } => !!x);
+  const currentChapter = page === 0 ? 0 : chapterOf[page] ?? 0;
 
   const progress = pages.length ? Math.min(1, (starts[page] ?? 0) / Math.max(1, book.totalChars)) : 0;
   const btn = [s.pill, { backgroundColor: c.card, borderColor: c.border }];
   const ready = pages.length > 0 && area.h > 0;
   const layoutKey = `${contentW}-${contentH}-${spec.fontFamily}-${spec.fontSize}`;
-  const closeAnd = (fn: () => void) => { setMenu(false); setTimeout(fn, 120); };
+  const pageNo = (pos: number) => Math.max(1, pageForPos(starts, pos));
 
   return (
     <View style={[s.root, { backgroundColor: c.bg }]}>
@@ -226,15 +276,25 @@ export default function ReaderScreen({ route, navigation }: Props) {
       </View>
 
       <View style={s.floating}>
+        {highlight ? (
+          <Pressable onPress={() => setHighlight('')} style={[s.pill, s.chip, { backgroundColor: c.mark, borderColor: c.border }]} accessibilityRole="button" accessibilityLabel="Vurguyu temizle">
+            <Text numberOfLines={1} style={[s.pillText, { color: isDark ? '#fff' : '#141B34' }]}>“{highlight}” ✕</Text>
+          </Pressable>
+        ) : <View style={{ flex: 1 }} />}
         <Pressable onPress={() => setLarge((v) => !v)} style={btn} accessibilityRole="button" accessibilityState={{ selected: large }}>
           <Text style={[s.pillText, { color: c.text }]}>{large ? 'Küçült' : 'Büyüt'}</Text>
         </Pressable>
-        <Pressable onPress={() => setMenu(true)} style={btn} accessibilityRole="button">
+        <Pressable onPress={() => setSheet('menu')} style={btn} accessibilityRole="button">
           <Text style={[s.pillText, { color: c.text }]}>Menü</Text>
         </Pressable>
       </View>
 
-      <View style={{ flex: 1 }} onLayout={(e) => setArea({ w: e.nativeEvent.layout.width, h: Math.round(e.nativeEvent.layout.height) })}>
+      <View
+        ref={shot}
+        collapsable={false}
+        style={{ flex: 1, backgroundColor: c.bg }}
+        onLayout={(e) => setArea({ w: e.nativeEvent.layout.width, h: Math.round(e.nativeEvent.layout.height) })}
+      >
         {area.h > 0 && (
           <Measurer
             key={layoutKey}
@@ -259,7 +319,7 @@ export default function ReaderScreen({ route, navigation }: Props) {
               pages[i] === COVER ? (
                 <CoverPage book={book} pageCount={Math.max(1, pages.length - 1)} c={c} width={width} height={area.h} family={family} />
               ) : (
-                <TextPage text={pages[i]} chapter={chapterOf[i]} c={c} width={width} height={area.h} spec={spec} />
+                <TextPage text={pages[i]} chapter={chapterOf[i]} c={c} width={width} height={area.h} spec={spec} highlight={highlight} />
               )
             }
           />
@@ -291,72 +351,74 @@ export default function ReaderScreen({ route, navigation }: Props) {
           <Pressable onPress={() => flip.current?.prev()} disabled={page === 0} style={[s.nav, { opacity: page === 0 ? 0.4 : 1 }]} accessibilityRole="button">
             <Text style={{ color: c.text, fontWeight: '600' }}>‹ Önceki</Text>
           </Pressable>
-          <Text style={{ color: c.text, fontWeight: '600' }}>{page === 0 ? 'Kapak' : `${page} / ${total - 1}`}</Text>
+          <Pressable onPress={() => { setGotoText(''); setGoto(true); }} accessibilityRole="button" accessibilityLabel="Sayfaya git" style={s.nav}>
+            <Text style={{ color: c.text, fontWeight: '600' }}>{page === 0 ? 'Kapak' : `${page} / ${total - 1}`}</Text>
+          </Pressable>
           <Pressable onPress={() => flip.current?.next()} disabled={page >= total - 1} style={[s.nav, { opacity: page >= total - 1 ? 0.4 : 1 }]} accessibilityRole="button">
             <Text style={{ color: c.accent, fontWeight: '700' }}>Sonraki ›</Text>
           </Pressable>
         </View>
       </View>
 
-      <Modal visible={menu} animationType="slide" onRequestClose={() => setMenu(false)}>
-        <SafeAreaView style={[s.root, { backgroundColor: c.bg }]}>
-          <ScrollView contentContainerStyle={{ padding: 20, gap: 2 }}>
-            <Text style={[s.menuTitle, { color: c.head, fontFamily: family }]} numberOfLines={2}>{book.title}</Text>
+      {/* Menü */}
+      <Sheet visible={sheet === 'menu'} onClose={() => setSheet(null)} title={book.title} c={c}>
+        <Row
+          label="Bölümler"
+          hint={currentChapter ? `Şu an: Bölüm ${currentChapter}` : 'Kapak'}
+          right="›"
+          onPress={() => closeAnd(() => setSheet('chapters'))}
+          c={c}
+        />
+        <Row label="Yer imleri" right={marks.length ? String(marks.length) : undefined} onPress={() => closeAnd(() => setSheet('marks'))} c={c} />
+        <Row label="Kitapta ara" onPress={() => closeAnd(() => { setQuery(''); setSearchOpen(true); })} c={c} />
+        <Row label="Sayfaya git" onPress={() => closeAnd(() => { setGotoText(''); setGoto(true); })} c={c} />
+        <Row label={isDark ? 'Gündüz modu' : 'Gece modu'} onPress={() => update({ mode: isDark ? 'day' : 'night' })} c={c} />
+        <View style={[s.sep, { backgroundColor: c.border }]} />
+        <Row
+          label="Bu sayfayı görüntü olarak paylaş"
+          disabled={page === 0 || !!busy}
+          onPress={() => closeAnd(() => run('Görüntü hazırlanıyor…', () => sharePageImage(shot)))}
+          c={c}
+        />
+        <Row label="PDF olarak dışa aktar" disabled={!!busy} onPress={() => run('PDF hazırlanıyor…', () => exportPdf(book))} c={c} />
+        <Row label="YouTube'da aç" onPress={() => Linking.openURL(book.url).catch(() => Alert.alert('Açılamadı'))} c={c} />
+        {busy && <Text style={{ color: c.muted, paddingVertical: 8, paddingHorizontal: 4 }}>{busy}</Text>}
+        <View style={[s.sep, { backgroundColor: c.border }]} />
+        <Row label="Kitabı kapat" onPress={() => { setSheet(null); navigation.goBack(); }} c={c} />
+      </Sheet>
 
-            <Text style={[s.kicker, { color: c.muted, marginTop: 16 }]}>İÇİNDEKİLER</Text>
-            <Pressable onPress={() => closeAnd(() => jump(0))} style={s.menuRow} accessibilityRole="button">
-              <Text style={{ color: c.text, flex: 1 }}>Kapak</Text>
-            </Pressable>
-            {chapterPages.map((ch, k) => (
-              <Pressable key={ch.i} onPress={() => closeAnd(() => jump(ch.i))} style={s.menuRow} accessibilityRole="button">
-                <Text style={{ color: c.text, flex: 1 }}>{k + 1}. {ch.title}</Text>
-                <Text style={{ color: c.muted }}>{ch.i}</Text>
-              </Pressable>
-            ))}
+      {/* Bölümler */}
+      <Sheet visible={sheet === 'chapters'} onClose={() => setSheet(null)} title="Bölümler" c={c}>
+        <Row label="Kapak" right={currentChapter === 0 ? '●' : undefined} onPress={() => closeAnd(() => jump(0))} c={c} accent={currentChapter === 0} />
+        {chapterPages.map((ch, k) => {
+          const on = currentChapter === k + 1;
+          const snippet = (book.chapters[k]?.text ?? '').replace(/\s+/g, ' ').slice(0, 70);
+          return (
+            <Row
+              key={ch.i}
+              label={`${k + 1}. ${ch.title}`}
+              hint={snippet}
+              right={`s. ${ch.i}`}
+              accent={on}
+              bold={on}
+              onPress={() => closeAnd(() => jump(ch.i))}
+              c={c}
+            />
+          );
+        })}
+      </Sheet>
 
-            {marks.length > 0 && <Text style={[s.kicker, { color: c.muted, marginTop: 16 }]}>YER İMLERİ</Text>}
-            {marks.map((m) => (
-              <Pressable key={m} onPress={() => closeAnd(() => jump(Math.max(1, pageForPos(starts, m))))} style={s.menuRow} accessibilityRole="button">
-                <Text style={{ color: c.accent }}>★ Sayfa {Math.max(1, pageForPos(starts, m))}</Text>
-              </Pressable>
-            ))}
+      {/* Yer imleri */}
+      <Sheet visible={sheet === 'marks'} onClose={() => setSheet(null)} title="Yer imleri" c={c}>
+        {marks.length === 0 && (
+          <Text style={{ color: c.muted, padding: 12 }}>Henüz yer imi yok. Okurken ☆ düğmesine dokun.</Text>
+        )}
+        {marks.map((m) => (
+          <Row key={m} label={`★ Sayfa ${pageNo(m)}`} accent onPress={() => closeAnd(() => jump(pageNo(m)))} c={c} />
+        ))}
+      </Sheet>
 
-            <Text style={[s.kicker, { color: c.muted, marginTop: 16 }]}>OKUMA</Text>
-            <Pressable onPress={() => closeAnd(() => { setQuery(''); setSearchOpen(true); })} style={s.menuRow} accessibilityRole="button">
-              <Text style={{ color: c.text }}>Kitapta ara</Text>
-            </Pressable>
-            <Pressable onPress={() => closeAnd(() => { setGotoText(''); setGoto(true); })} style={s.menuRow} accessibilityRole="button">
-              <Text style={{ color: c.text }}>Sayfaya git</Text>
-            </Pressable>
-            <Pressable onPress={() => update({ mode: isDark ? 'day' : 'night' })} style={s.menuRow} accessibilityRole="button">
-              <Text style={{ color: c.text }}>{isDark ? 'Gündüz modu' : 'Gece modu'}</Text>
-            </Pressable>
-
-            <Text style={[s.kicker, { color: c.muted, marginTop: 16 }]}>PAYLAŞ</Text>
-            <Pressable
-              onPress={() => Linking.openURL(book.url).catch(() => Alert.alert('Açılamadı'))}
-              style={s.menuRow} accessibilityRole="link"
-            >
-              <Text style={{ color: c.text }}>YouTube'da aç</Text>
-            </Pressable>
-            <Pressable onPress={() => run('EPUB hazırlanıyor…', () => exportEpub(book))} disabled={!!busy} style={s.menuRow} accessibilityRole="button">
-              <Text style={{ color: c.text }}>EPUB olarak dışa aktar</Text>
-            </Pressable>
-            <Pressable onPress={() => run('PDF hazırlanıyor…', () => exportPdf(book))} disabled={!!busy} style={s.menuRow} accessibilityRole="button">
-              <Text style={{ color: c.text }}>PDF olarak dışa aktar</Text>
-            </Pressable>
-            {busy && <Text style={{ color: c.muted, paddingVertical: 8 }}>{busy}</Text>}
-
-            <Pressable onPress={() => { setMenu(false); navigation.goBack(); }} style={[s.menuRow, { marginTop: 12 }]} accessibilityRole="button">
-              <Text style={{ color: c.text }}>Kitabı kapat</Text>
-            </Pressable>
-            <Pressable onPress={() => setMenu(false)} style={s.menuRow} accessibilityRole="button">
-              <Text style={{ color: c.accent, fontWeight: '700' }}>Okumaya dön</Text>
-            </Pressable>
-          </ScrollView>
-        </SafeAreaView>
-      </Modal>
-
+      {/* Kitapta ara */}
       <Modal visible={searchOpen} animationType="slide" onRequestClose={() => setSearchOpen(false)}>
         <SafeAreaView style={[s.root, { backgroundColor: c.bg }]}>
           <View style={{ padding: 16, gap: 10, flex: 1 }}>
@@ -375,17 +437,21 @@ export default function ReaderScreen({ route, navigation }: Props) {
               </Pressable>
             </View>
             <Text style={{ color: c.muted, fontSize: 13 }}>
-              {query.trim().length < 2 ? 'En az 2 harf yaz. ı/i, ş/s gibi harf farkları önemsenmez.' : `${hits.length}${hits.length >= 100 ? '+' : ''} sonuç`}
+              {query.trim().length < 2 ? 'En az 2 harf yaz. ı/i, ş/s gibi harf farkları önemsenmez.' : `${hits.length}${hits.length >= 100 ? '+' : ''} sonuç · bulunan sayfada kelime vurgulanır`}
             </Text>
             <ScrollView keyboardShouldPersistTaps="handled">
               {hits.map((h, k) => (
                 <Pressable
                   key={k}
-                  onPress={() => { setSearchOpen(false); setTimeout(() => jump(Math.max(1, pageForPos(starts, h.pos))), 120); }}
+                  onPress={() => {
+                    const q = query.trim();
+                    setSearchOpen(false);
+                    setTimeout(() => { setHighlight(q); jump(pageNo(h.pos)); }, 250);
+                  }}
                   style={[s.hit, { borderColor: c.border }]}
                   accessibilityRole="button"
                 >
-                  <Text style={{ color: c.muted, fontSize: 12 }}>Bölüm {h.chapter + 1} · Sayfa {Math.max(1, pageForPos(starts, h.pos))}</Text>
+                  <Text style={{ color: c.muted, fontSize: 12 }}>Bölüm {h.chapter + 1} · Sayfa {pageNo(h.pos)}</Text>
                   <Text style={{ color: c.text, marginTop: 2 }}>{h.snippet}</Text>
                 </Pressable>
               ))}
@@ -394,6 +460,7 @@ export default function ReaderScreen({ route, navigation }: Props) {
         </SafeAreaView>
       </Modal>
 
+      {/* Sayfaya git */}
       <Modal visible={goto} transparent animationType="fade" onRequestClose={() => setGoto(false)}>
         <View style={s.backdrop}>
           <View style={[s.dialog, { backgroundColor: c.card }]}>
@@ -426,8 +493,9 @@ const s = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   progressTrack: { height: 3 },
   progressFill: { height: 3 },
-  floating: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8, paddingHorizontal: 16, paddingTop: 12 },
+  floating: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingTop: 12 },
   pill: { height: 44, borderRadius: 22, borderWidth: 1, paddingHorizontal: 18, justifyContent: 'center' },
+  chip: { flex: 1, maxWidth: 190 },
   pillText: { fontWeight: '600', fontSize: 14 },
   kicker: { fontSize: 11, letterSpacing: 1.6, fontWeight: '700' },
   head: { fontSize: 30, lineHeight: 35, fontWeight: '700', marginTop: 4 },
@@ -437,8 +505,13 @@ const s = StyleSheet.create({
   cardRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   square: { width: 44, height: 44, borderRadius: 12, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   nav: { height: 44, paddingHorizontal: 4, justifyContent: 'center' },
-  menuTitle: { fontSize: 26, lineHeight: 30 },
-  menuRow: { flexDirection: 'row', minHeight: 48, alignItems: 'center' },
+  sheetRoot: { flex: 1, justifyContent: 'flex-end' },
+  sheet: { maxHeight: '78%', borderTopLeftRadius: 22, borderTopRightRadius: 22, borderWidth: 1, borderBottomWidth: 0, paddingHorizontal: 16, paddingTop: 8 },
+  handle: { width: 44, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: 6 },
+  sheetHead: { flexDirection: 'row', alignItems: 'center', minHeight: 48 },
+  sheetClose: { minHeight: 44, minWidth: 56, alignItems: 'flex-end', justifyContent: 'center' },
+  row: { flexDirection: 'row', alignItems: 'center', minHeight: 52, paddingVertical: 8, paddingHorizontal: 4 },
+  sep: { height: 1, marginVertical: 6 },
   searchInput: { flex: 1, height: 48, borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, fontSize: 16 },
   hit: { paddingVertical: 12, borderBottomWidth: 1 },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-start', paddingTop: 120, paddingHorizontal: 32 },

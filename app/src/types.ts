@@ -14,6 +14,7 @@ export type Book = {
   lastPage: number; // legacy page index
   lastPos: number; // reading position (non-space chars), independent of font size
   totalChars: number;
+  favorite?: number; // 1 = favorite
 };
 
 export type BookRow = Omit<Book, 'chapters' | 'pages'> & { pageCount: number };
