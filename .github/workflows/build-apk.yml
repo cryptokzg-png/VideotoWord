@@ -36,6 +36,20 @@ jobs:
           npm run typecheck
           npm test
 
+      - name: Set versionCode from run number
+        # Android only installs an update if versionCode is higher than the installed app's.
+        # github.run_number increases with every workflow run, so each APK is newer.
+        run: |
+          node -e '
+            const fs = require("fs");
+            const a = JSON.parse(fs.readFileSync("app.json", "utf8"));
+            a.expo.android.versionCode = Number(process.env.RUN_NUMBER);
+            fs.writeFileSync("app.json", JSON.stringify(a, null, 2));
+            console.log("versionCode =", a.expo.android.versionCode, "version =", a.expo.version);
+          '
+        env:
+          RUN_NUMBER: ${{ github.run_number }}
+
       - name: Generate native Android project
         run: npx expo prebuild --platform android --no-install
         env:

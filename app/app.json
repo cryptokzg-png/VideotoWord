@@ -19,10 +19,17 @@
       "intentFilters": [
         {
           "action": "SEND",
-          "category": ["DEFAULT"],
-          "data": [{ "mimeType": "text/plain" }]
+          "category": [
+            "DEFAULT"
+          ],
+          "data": [
+            {
+              "mimeType": "text/plain"
+            }
+          ]
         }
-      ]
+      ],
+      "versionCode": 1
     }
   }
 }
