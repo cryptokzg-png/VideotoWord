@@ -2,7 +2,8 @@ import type { Chapter } from '../types';
 
 export type Cue = { start: number; dur: number; text: string };
 
-const NOISE = /\[(müzik|music|alkış|applause|gülüşmeler|laughter)[^\]]*\]|♪[^♪]*♪/gi;
+// sound descriptions like [Müzik], [Applause], [ ♪♪ ] and stray music notes
+const NOISE = /\[[^\]]*\]|\([^)]*(?:müzik|music|alkış|applause)[^)]*\)|[♪♫]+/gi;
 
 /** Remove noise tags, decode basic entities, collapse whitespace. */
 export function cleanCue(text: string): string {

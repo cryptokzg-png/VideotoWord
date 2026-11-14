@@ -15,3 +15,16 @@ const b=buildBook(sampleVideo());
 console.log('pages',b.pages.length,'chapters',b.chapters.length,sizeLabel(b.pages.length));
 if(!b.pages.every(p=>p.length<=1300)){console.error('FAIL page too long');process.exit(1)}
 console.log('OK');
+
+import { parseTimedText, decodeEntities, pickTrack, parseDescriptionChapters } from '../src/lib/captions';
+const c = parseTimedText('<timedtext format="3"><body><p t="18640" d="3240">It&amp;#39;s &amp;amp; ok</p><p t="22000" d="1000"><s>Hel</s><s t="1">lo</s></p></body></timedtext>');
+eq(c, [{start:18.64,dur:3.24,text:"It's & ok"},{start:22,dur:1,text:'Hello'}], 'timedtext');
+eq(decodeEntities('&#x41;&lt;'), 'A<', 'entities');
+eq(pickTrack([{baseUrl:'a',languageCode:'en',kind:'asr'},{baseUrl:'b',languageCode:'tr',kind:'asr'},{baseUrl:'c',languageCode:'en'}])?.baseUrl, 'b', 'prefers tr auto over en manual');
+eq(parseDescriptionChapters('Merhaba\n0:00 Giriş\n1:30 - Konu\n1:02:03 Son').map(x=>x.startSec), [0,90,3723], 'chapters');
+eq(parseDescriptionChapters('0:10 tek'), [], 'chapters need >=2 and start 0');
+console.log('OK2');
+import { cleanCue } from '../src/lib/transcript';
+eq(cleanCue('[ ♪]'), '', 'music tag');
+eq(cleanCue('[Alkış] Merhaba ♪ dünya'), 'Merhaba dünya', 'noise inline');
+console.log('OK3');
