@@ -182,3 +182,9 @@ export async function listBookTexts(): Promise<{ id: string; title: string; chap
   const rows = await db.getAllAsync<{ id: string; title: string; chapters: string }>('SELECT id, title, chapters FROM books');
   return rows.map((r) => ({ id: r.id, title: r.title, chapters: JSON.parse(r.chapters) as Chapter[] }));
 }
+
+/** Replace a book's chapters (used when chapter titles are renamed or regenerated). */
+export async function updateChapters(id: string, chapters: Chapter[]) {
+  const db = await getDb();
+  await db.runAsync('UPDATE books SET chapters = ? WHERE id = ?', JSON.stringify(chapters), id);
+}

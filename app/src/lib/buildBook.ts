@@ -2,6 +2,7 @@ import type { Book } from '../types';
 import { cleanCues, splitIntoChapters, toParagraphs } from './transcript';
 import { paginate } from './paginate';
 import { totalChars } from './layout';
+import { autoTitle } from './titles';
 import type { VideoData } from './youtube';
 
 /** Turn fetched video data into a paginated book (no AI, rule based). */
@@ -15,7 +16,8 @@ export function buildBook(v: VideoData): Book {
       return { title: c.title, text: toParagraphs(part).join('\n\n') };
     }).filter((c) => c.text);
   } else {
-    chapters = splitIntoChapters(toParagraphs(cues));
+    // no chapters in the video: split by size and name each part from its first words
+    chapters = splitIntoChapters(toParagraphs(cues)).map((c) => ({ ...c, title: autoTitle(c.text) }));
   }
   return {
     id: v.id,

@@ -5,7 +5,9 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../App';
-import { addNote, deleteNote, getBook, getMarks, listNotes, setLastPos, setNoteFavorite, setPageCount, toggleMark, updateNoteText } from '../db/db';
+import { addNote, deleteNote, getBook, getMarks, listNotes, setLastPos, setNoteFavorite, setPageCount, toggleMark, updateChapters, updateNoteText } from '../db/db';
+import { autoTitle } from '../lib/titles';
+import { RenameDialog } from '../components/RenameDialog';
 import { highlightKey, paragraphRange, selectQuote, shareText, tapWord, tokenize, wordCount } from '../lib/notes';
 import { COVER, pageForPos, pageStarts, pagesFromLines } from '../lib/layout';
 import { searchBook, splitByMatch, type SearchHit } from '../lib/search';
@@ -174,6 +176,7 @@ export default function ReaderScreen({ route, navigation }: Props) {
   const [sel, setSel] = useState<{ a: number; b: number } | null>(null);
   const [noteDialog, setNoteDialog] = useState<null | { id?: number; quote: string; pos: number; text: string }>(null);
   const [notesTab, setNotesTab] = useState<'all' | 'fav'>('all');
+  const [renaming, setRenaming] = useState<number | null>(null); // chapter index being renamed
   const [area, setArea] = useState({ w: 0, h: 0 });
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -309,6 +312,18 @@ export default function ReaderScreen({ route, navigation }: Props) {
     toast(d.id !== undefined ? 'Not güncellendi' : favorite ? '★ Favori sözlere eklendi' : 'Notlara eklendi');
   };
 
+  const saveChapterTitle = async (index: number, title: string | null) => {
+    if (!book) return;
+    const chapters = book.chapters.map((ch, i) =>
+      i !== index ? ch : title === null ? { title: autoTitle(ch.text), text: ch.text } : { title: title.trim(), text: ch.text, custom: true },
+    );
+    await updateChapters(book.id, chapters);
+    setBook({ ...book, chapters });
+    setRenaming(null);
+    setSheet('chapters');
+    toast(title === null ? 'Otomatik başlık geri geldi' : 'Başlık güncellendi');
+  };
+
   const closeAnd = (fn: () => void) => {
     setSheet(null);
     setTimeout(fn, 250);
@@ -331,7 +346,8 @@ export default function ReaderScreen({ route, navigation }: Props) {
   const progress = pages.length ? Math.min(1, (starts[page] ?? 0) / Math.max(1, book.totalChars)) : 0;
   const btn = [s.pill, { backgroundColor: c.card, borderColor: c.border }];
   const ready = pages.length > 0 && area.h > 0;
-  const layoutKey = `${contentW}-${contentH}-${spec.fontFamily}-${spec.fontSize}`;
+  const titlesKey = book.chapters.map((ch) => ch.title).join('|'); // heading heights depend on the titles
+  const layoutKey = `${contentW}-${contentH}-${spec.fontFamily}-${spec.fontSize}-${titlesKey}`;
   const pageNo = (pos: number) => Math.max(1, pageForPos(starts, pos));
 
   return (
@@ -547,18 +563,26 @@ export default function ReaderScreen({ route, navigation }: Props) {
         <Row label="Kapak" right={currentChapter === 0 ? '●' : undefined} onPress={() => closeAnd(() => jump(0))} c={c} accent={currentChapter === 0} />
         {chapterPages.map((ch, k) => {
           const on = currentChapter === k + 1;
+          const title = book.chapters[k]?.title ?? ch.title;
           const snippet = (book.chapters[k]?.text ?? '').replace(/\s+/g, ' ').slice(0, 70);
           return (
-            <Row
-              key={ch.i}
-              label={`${k + 1}. ${ch.title}`}
-              hint={snippet}
-              right={`s. ${ch.i}`}
-              accent={on}
-              bold={on}
-              onPress={() => closeAnd(() => jump(ch.i))}
-              c={c}
-            />
+            <View key={ch.i} style={s.chapRow}>
+              <Pressable onPress={() => closeAnd(() => jump(ch.i))} style={s.chapMain} accessibilityRole="button">
+                <View style={{ flex: 1 }}>
+                  <Text numberOfLines={2} style={{ color: on ? c.accent : c.text, fontWeight: on ? '800' : '500', fontSize: 16 }}>{k + 1}. {title}</Text>
+                  {!!snippet && <Text numberOfLines={1} style={{ color: c.muted, fontSize: 13, marginTop: 2 }}>{snippet}</Text>}
+                </View>
+                <Text style={{ color: c.muted, marginLeft: 10 }}>s. {ch.i}</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => closeAnd(() => setRenaming(k))}
+                style={s.chapEdit}
+                accessibilityRole="button"
+                accessibilityLabel={`${k + 1}. bölümün başlığını değiştir`}
+              >
+                <Text style={{ color: c.muted, fontSize: 18 }}>✎</Text>
+              </Pressable>
+            </View>
           );
         })}
       </Sheet>
@@ -572,6 +596,16 @@ export default function ReaderScreen({ route, navigation }: Props) {
           <Row key={m} label={`★ Sayfa ${pageNo(m)}`} accent onPress={() => closeAnd(() => jump(pageNo(m)))} c={c} />
         ))}
       </Sheet>
+
+      <RenameDialog
+        visible={renaming !== null}
+        label={renaming !== null ? `${renaming + 1}. bölüm` : ''}
+        initial={renaming !== null ? book.chapters[renaming]?.title ?? '' : ''}
+        c={c}
+        onCancel={() => { setRenaming(null); setSheet('chapters'); }}
+        onSave={(t) => renaming !== null && saveChapterTitle(renaming, t)}
+        onReset={() => renaming !== null && saveChapterTitle(renaming, null)}
+      />
 
       {/* Notlar ve sözler */}
       <Sheet visible={sheet === 'notes'} onClose={() => setSheet(null)} title="Notlar ve sözler" c={c}>
@@ -771,6 +805,9 @@ const s = StyleSheet.create({
   sheetClose: { minHeight: 44, minWidth: 56, alignItems: 'flex-end', justifyContent: 'center' },
   row: { flexDirection: 'row', alignItems: 'center', minHeight: 52, paddingVertical: 8, paddingHorizontal: 4 },
   sep: { height: 1, marginVertical: 6 },
+  chapRow: { flexDirection: 'row', alignItems: 'center' },
+  chapMain: { flex: 1, flexDirection: 'row', alignItems: 'center', minHeight: 56, paddingVertical: 8, paddingHorizontal: 4 },
+  chapEdit: { width: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
   selBar: { position: 'absolute', left: 20, right: 20, borderWidth: 1.5, borderRadius: 16, padding: 12, gap: 8 },
   selActions: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 6 },
   selBtn: { minHeight: 44, paddingHorizontal: 12, borderRadius: 12, justifyContent: 'center' },

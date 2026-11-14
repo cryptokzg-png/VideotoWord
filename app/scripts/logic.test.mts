@@ -154,6 +154,25 @@ eq(searchAll(lib, 'sirk').length, 2, 'ş/s insensitive: matches SIRK and şirk')
 eq(searchAll(lib, 'x').length, 0, 'too short');
 eq(searchAll(lib, 'şirk', 1)[0].capped, true, 'capped flag');
 
+// ---- chapter titles ----
+import { autoTitle, regenerateTitles, isPlainTitle } from '../src/lib/titles';
+eq(autoTitle('başka ilahlar yoktur göklerde Egemen ilah Allah'), 'Başka ilahlar yoktur göklerde Egemen ilah…', 'first six words, capitalized');
+eq(autoTitle('iyi günler.'), 'İyi günler', 'Turkish capital İ, trailing dot removed');
+eq(autoTitle('  '), 'Bölüm', 'empty text');
+eq(autoTitle('kısa metin'), 'Kısa metin', 'no ellipsis when nothing is cut');
+if (autoTitle('uzunuzunuzunuzunuzun '.repeat(10)).length > 52) { console.error('FAIL title too long'); process.exit(1); }
+const rg = regenerateTitles([
+  { title: 'Bölüm 1', text: 'ilk bölümün metni burada başlıyor ve devam ediyor' },
+  { title: 'Giriş', text: 'videodan gelen başlık korunur' },
+  { title: 'Bölüm 3', text: 'elle adlandırılmış', custom: true },
+]);
+eq(rg[0].title, 'İlk bölümün metni burada başlıyor ve…', 'plain title regenerated');
+eq(rg[1].title, 'Giriş', 'video chapter title kept');
+eq(rg[2].title, 'Bölüm 3', 'custom title kept');
+eq([isPlainTitle(rg[0]), isPlainTitle({ title: 'Bölüm 7', text: '' }), isPlainTitle({ title: 'Bölüm 7', text: '', custom: true })], [false, true, false], 'isPlainTitle');
+const built = buildBook(sampleVideo());
+if (built.chapters.some((c) => /^Bölüm \d+$/.test(c.title))) { console.error('FAIL new books should get automatic titles', built.chapters.map((c) => c.title)); process.exit(1); }
+
 // ---- settings ----
 import { parseSettings, DEFAULTS } from '../src/lib/settingsModel';
 eq(parseSettings({}), DEFAULTS, 'defaults');

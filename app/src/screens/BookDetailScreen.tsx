@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react';
 import { Alert, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, ToastAndroid, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../App';
-import { deleteBook, getBook, setFavorite } from '../db/db';
+import { deleteBook, getBook, setFavorite, updateChapters } from '../db/db';
+import { autoTitle, isPlainTitle, regenerateTitles } from '../lib/titles';
+import { RenameDialog } from '../components/RenameDialog';
 import type { Book } from '../types';
 import { describeBook } from '../lib/sizeLabel';
 import { exportPdf } from '../lib/shareBook';
@@ -15,6 +17,7 @@ export default function BookDetailScreen({ route, navigation }: Props) {
   const isDark = useIsDark();
   const [book, setBook] = useState<Book | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [renaming, setRenaming] = useState<number | null>(null);
   useEffect(() => { getBook(route.params.id).then(setBook); }, [route.params.id]);
   if (!book) return <View style={[s.root, { backgroundColor: t.bg }]} />;
 
@@ -22,6 +25,24 @@ export default function BookDetailScreen({ route, navigation }: Props) {
     setBusy(label);
     try { await fn(); } catch (e: any) { Alert.alert('Dışa aktarılamadı', String(e?.message ?? e)); } finally { setBusy(null); }
   };
+  const toast = (m: string) => Platform.OS === 'android' && ToastAndroid.show(m, ToastAndroid.SHORT);
+
+  const saveChapters = async (chapters: typeof book.chapters, message: string) => {
+    await updateChapters(book.id, chapters);
+    setBook({ ...book, chapters });
+    toast(message);
+  };
+
+  const renameChapter = (index: number, title: string | null) => {
+    const chapters = book.chapters.map((ch, i) =>
+      i !== index ? ch : title === null ? { title: autoTitle(ch.text), text: ch.text } : { title: title.trim(), text: ch.text, custom: true },
+    );
+    setRenaming(null);
+    return saveChapters(chapters, title === null ? 'Otomatik başlık geri geldi' : 'Başlık güncellendi');
+  };
+
+  const hasPlainTitles = book.chapters.some(isPlainTitle);
+
   const confirmDelete = () =>
     Alert.alert('Kitabı sil', `"${book.title}" ve yer imleri silinsin mi? Bu işlem geri alınamaz.`, [
       { text: 'Vazgeç', style: 'cancel' },
@@ -99,9 +120,38 @@ export default function BookDetailScreen({ route, navigation }: Props) {
       {busy && <Text style={{ color: t.muted }}>{busy}</Text>}
 
       <Text style={[s.h2, { color: t.text, fontFamily: serif }]}>Bölümler</Text>
+      {hasPlainTitles && (
+        <Pressable
+          onPress={() => saveChapters(regenerateTitles(book.chapters), 'Başlıklar yeniden oluşturuldu')}
+          style={[s.secondary, { borderColor: t.border, backgroundColor: t.surface }]}
+          accessibilityRole="button"
+        >
+          <Text style={{ color: t.text, fontWeight: '600' }}>Başlıkları ilk kelimelerden oluştur</Text>
+        </Pressable>
+      )}
       {book.chapters.map((c, i) => (
-        <Text key={i} style={{ color: t.muted, paddingVertical: 4 }}>{i + 1}. {c.title}</Text>
+        <View key={i} style={s.chapRow}>
+          <Text style={{ color: t.muted, flex: 1, paddingVertical: 8 }} numberOfLines={2}>{i + 1}. {c.title}</Text>
+          <Pressable
+            onPress={() => setRenaming(i)}
+            style={s.chapEdit}
+            accessibilityRole="button"
+            accessibilityLabel={`${i + 1}. bölümün başlığını değiştir`}
+          >
+            <Text style={{ color: t.muted, fontSize: 18 }}>✎</Text>
+          </Pressable>
+        </View>
       ))}
+
+      <RenameDialog
+        visible={renaming !== null}
+        label={renaming !== null ? `${renaming + 1}. bölüm` : ''}
+        initial={renaming !== null ? book.chapters[renaming]?.title ?? '' : ''}
+        c={{ card: t.surface, text: t.text, muted: t.muted, border: t.border, accent: t.accent }}
+        onCancel={() => setRenaming(null)}
+        onSave={(title) => renaming !== null && renameChapter(renaming, title)}
+        onReset={() => renaming !== null && renameChapter(renaming, null)}
+      />
     </ScrollView>
   );
 }
@@ -116,5 +166,7 @@ const s = StyleSheet.create({
   row: { flexDirection: 'row', gap: 10 },
   secondary: { flex: 1, minHeight: 48, borderRadius: 12, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   h2: { fontSize: 20, fontWeight: '700', marginTop: 12 },
+  chapRow: { flexDirection: 'row', alignItems: 'center' },
+  chapEdit: { width: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
   deleteBtn: { flex: 0.6, borderWidth: 1.5 },
 });

@@ -1,4 +1,4 @@
-export type Chapter = { title: string; text: string };
+export type Chapter = { title: string; text: string; custom?: boolean }; // custom: renamed by the user
 
 export type Book = {
   id: string; // YouTube video id
