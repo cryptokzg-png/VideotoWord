@@ -32,7 +32,7 @@ console.log('OK3');
 // regression: unpunctuated auto-captions must not become one giant paragraph / heading-only pages
 const longCues = Array.from({ length: 400 }, (_, i) => ({ start: i * 3, dur: 2.9, text: 'bu bir noktalama olmayan otomatik altyazı satırıdır numara ' + i }));
 const paras = toParagraphs(cleanCues(longCues));
-if (!paras.every((p) => p.length < 420)) { console.error('FAIL giant paragraph', Math.max(...paras.map((p) => p.length))); process.exit(1); }
+if (!paras.every((p) => p.length < 1000)) { console.error('FAIL giant paragraph', Math.max(...paras.map((p) => p.length))); process.exit(1); }
 const chs = splitIntoChapters(paras);
 if (chs.length < 4) { console.error('FAIL too few chapters', chs.length); process.exit(1); }
 const pgs = paginate(chs);
@@ -63,3 +63,58 @@ for (const [cpp, pen] of [[300, 80], [520, 150], [900, 250]] as const) {
 const smallFont = pageBudget(412, 640, 19), bigFont = pageBudget(412, 640, 19 * 1.5);
 if (!(bigFont.budget < smallFont.budget)) { console.error('FAIL budget should shrink with bigger font'); process.exit(1); }
 console.log('OK5 budget@19px =', smallFont.budget, "chars; @28px =", bigFont.budget);
+
+// ---- line based pagination ----
+import { pagesFromLines, COVER } from '../src/lib/layout';
+const chs2 = [{ title: 'Giriş', text: 'a\n\nb' }, { title: 'İkinci', text: 'c' }];
+const fakeLines = [
+  ['satir1 ', 'satir2 ', 'satir3 ', 'satir4 ', 'satir5 ', 'satir6\n', '\n', 'satir7 ', 'satir8'],
+  ['x1 ', 'x2'],
+];
+const lp = pagesFromLines(chs2, fakeLines, [60, 60], 20, 120); // 6 lines/page, first page 3 lines (120-60)/20
+eq(lp[0], COVER, 'cover first');
+eq(lp[1].startsWith('# Giriş\n\nsatir1 satir2 satir3'), true, 'first page has heading + 3 lines');
+eq(lp[1].split('\n\n')[1].includes('satir4'), false, 'first page capped by heading height');
+if (lp.some((p) => p !== COVER && p.replace(/^# .*\n\n/, '').trim() === '')) { console.error('FAIL empty page'); process.exit(1); }
+if (lp.some((p) => /^\s/.test(p.replace(/^# .*\n\n/, '')) && p !== COVER)) { console.error('FAIL page starts with blank'); process.exit(1); }
+if (!lp.some((p) => p.startsWith('# İkinci'))) { console.error('FAIL second chapter missing'); process.exit(1); }
+const flat = lp.join('').replace(/# [^\n]*\n\n/g, '').replace(/\s/g, '');
+eq(flat.replace('@cover', ''), fakeLines.flat().join('').replace(/\s/g, ''), 'no text lost or duplicated');
+// cover must not shift reading positions
+eq(pageStarts(lp)[0], 0, 'cover start'); eq(pageStarts(lp)[1], 0, 'first text page start');
+
+// ---- search ----
+import { searchBook, fold } from '../src/lib/search';
+eq(fold('İĞÜŞÖÇI'), 'igusoci', 'fold');
+eq(fold('Iıİi').length, 4, 'fold keeps length');
+const sc = [{ title: 'A', text: 'Merhaba dünya, ISPARTA güzel.\n\nİkinci paragraf' }, { title: 'B', text: 'isparta yine burada' }];
+eq(searchBook(sc, 'ısparta').length, 2, 'diacritic and case insensitive: ISPARTA, isparta');
+eq(searchBook(sc, 'ISPARTA')[1].chapter, 1, 'second hit in chapter B');
+eq(searchBook(sc, 'dunya').length, 1, 'ü matches u');
+eq(searchBook(sc, 'GÜZEL').length, 1, 'uppercase Ü');
+const sh3 = searchBook(sc, 'paragraf');
+eq(sh3[0].pos, sc[0].text.slice(0, sc[0].text.indexOf('paragraf')).replace(/\s/g, '').length, 'search pos = non-space offset');
+eq(searchBook(sc, 'a').length, 0, 'min length 2');
+
+// ---- epub ----
+import JSZip from 'jszip';
+import { buildEpub, buildPdfHtml, esc } from '../src/lib/export';
+import { writeFileSync } from 'node:fs';
+const bk = { id: 'abc', title: 'Test & "Kitap" <1>', author: 'Yazar', url: 'https://youtu.be/abc', chapters: [{ title: 'Bölüm 1', text: 'Merhaba <dünya> & herkes.\n\nİkinci.' }] };
+const epub = await buildEpub(bk);
+writeFileSync('/tmp/claude-0/test.epub', epub);
+const z = await JSZip.loadAsync(epub);
+const names = Object.keys(z.files);
+eq(names[0], 'mimetype', 'mimetype first');
+eq(await z.file('mimetype')!.async('string'), 'application/epub+zip', 'mimetype content');
+for (const n of ['META-INF/container.xml', 'OEBPS/content.opf', 'OEBPS/nav.xhtml', 'OEBPS/ch1.xhtml', 'OEBPS/title.xhtml']) if (!z.file(n)) { console.error('FAIL missing', n); process.exit(1); }
+eq((await z.file('OEBPS/ch1.xhtml')!.async('string')).includes('&lt;dünya&gt; &amp; herkes'), true, 'escaped body');
+eq(esc('<&">'), '&lt;&amp;&quot;&gt;', 'esc');
+eq(buildPdfHtml(bk).includes('Test &amp; &quot;Kitap&quot; &lt;1&gt;'), true, 'pdf html escaped');
+
+// ---- settings ----
+import { parseSettings, DEFAULTS } from '../src/lib/settingsModel';
+eq(parseSettings({}), DEFAULTS, 'defaults');
+eq(parseSettings({ mode: 'night', fontIdx: '3', font: 'sans' }), { mode: 'night', fontIdx: 3, font: 'sans' }, 'parse');
+eq(parseSettings({ mode: 'x', fontIdx: '99', font: 'y' }), DEFAULTS, 'invalid ignored');
+console.log('OK6');

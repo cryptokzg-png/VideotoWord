@@ -33,11 +33,11 @@ export function cleanCues(cues: Cue[]): Cue[] {
 const PAUSE_SEC = 2.5;
 
 /**
- * Join cues into paragraphs. Breaks on long pauses, on sentence ends once long enough,
- * and — because auto captions have no punctuation — at a cue boundary once a paragraph
- * reaches maxChars, so we never produce one giant wall of text.
+ * Join cues into paragraphs. Auto captions have no punctuation, so we break on the speaker's
+ * pauses: a longer pause ends a paragraph once it is long enough, and a very long run without
+ * any pause is cut at hardChars so a page is never one giant wall of text.
  */
-export function toParagraphs(cues: Cue[], minChars = 200, maxChars = 340): string[] {
+export function toParagraphs(cues: Cue[], softChars = 450, hardChars = 900): string[] {
   const paras: string[] = [];
   let cur = '';
   let prevEnd = 0;
@@ -47,10 +47,10 @@ export function toParagraphs(cues: Cue[], minChars = 200, maxChars = 340): strin
   };
   for (const c of cues) {
     const gap = c.start - prevEnd;
-    if (cur && gap > PAUSE_SEC && cur.length >= minChars / 2) flush();
+    if (cur && ((gap > PAUSE_SEC && cur.length >= 120) || (gap > 1.2 && cur.length >= softChars))) flush();
     cur += (cur ? ' ' : '') + c.text;
     prevEnd = c.start + c.dur;
-    if (cur.length >= maxChars || (cur.length >= minChars && /[.!?…]["')]?$/.test(cur))) flush();
+    if (cur.length >= hardChars || (cur.length >= 300 && /[.!?…]["')]?$/.test(cur))) flush();
   }
   flush();
   return paras;

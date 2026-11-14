@@ -16,20 +16,18 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "intentFilters": [
+      "versionCode": 1
+    },
+    "plugins": [
+      [
+        "expo-share-intent",
         {
-          "action": "SEND",
-          "category": [
-            "DEFAULT"
-          ],
-          "data": [
-            {
-              "mimeType": "text/plain"
-            }
+          "disableIOS": true,
+          "androidIntentFilters": [
+            "text/*"
           ]
         }
-      ],
-      "versionCode": 1
-    }
+      ]
+    ]
   }
 }

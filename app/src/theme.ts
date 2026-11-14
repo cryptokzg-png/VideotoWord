@@ -1,4 +1,5 @@
 import { useColorScheme } from 'react-native';
+import { useSettings } from './settings';
 
 export const light = {
   bg: '#F5F2EA',
@@ -29,9 +30,17 @@ export const dark: typeof light = {
 export type Theme = typeof light;
 export const serif = 'serif';
 
-export function useTheme(override?: 'light' | 'dark'): Theme {
+/** True when the app should render dark (user setting first, then the phone's setting). */
+export function useIsDark(): boolean {
   const scheme = useColorScheme();
-  return (override ?? scheme) === 'dark' ? dark : light;
+  const { settings } = useSettings();
+  if (settings.mode === 'night') return true;
+  if (settings.mode === 'day') return false;
+  return scheme === 'dark';
+}
+
+export function useTheme(): Theme {
+  return useIsDark() ? dark : light;
 }
 
 const COVERS = ['#1E3A8A', '#0F766E', '#9A3412', '#9F1239', '#4338CA', '#4D7C0F'];

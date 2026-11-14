@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState, type ComponentRef } from 'react';
 import { Alert, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import * as Clipboard from 'expo-clipboard';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../App';
 import { deleteBook, listBooks, saveBook } from '../db/db';
@@ -19,8 +20,21 @@ export default function LibraryScreen({ navigation }: Props) {
   const [books, setBooks] = useState<BookRow[]>([]);
   const [link, setLink] = useState('');
   const input = useRef<ComponentRef<typeof TextInput>>(null);
+  const [clip, setClip] = useState<string | null>(null); // video id found on the clipboard
+  const dismissed = useRef<Set<string>>(new Set());
 
-  const load = useCallback(() => { listBooks().then(setBooks); }, []);
+  const load = useCallback(() => {
+    listBooks().then((rows) => {
+      setBooks(rows);
+      // offer to convert a YouTube link that is on the clipboard
+      Clipboard.getStringAsync()
+        .then((text) => {
+          const id = parseVideoId(text ?? '');
+          setClip(id && !dismissed.current.has(id) && !rows.some((b) => b.id === id) ? id : null);
+        })
+        .catch(() => setClip(null));
+    });
+  }, []);
   useFocusEffect(load);
 
   const convert = () => {
@@ -70,6 +84,27 @@ export default function LibraryScreen({ navigation }: Props) {
           </Pressable>
         </View>
       </View>
+
+      {clip && (
+        <View style={[s.banner, { backgroundColor: t.surface, borderColor: t.accent }]}>
+          <Text style={{ color: t.text, flex: 1 }} numberOfLines={2}>Panoda bir YouTube linki var. Kitaba çevirelim mi?</Text>
+          <Pressable
+            onPress={() => { dismissed.current.add(clip); setClip(null); navigation.navigate('Convert', { videoId: clip }); }}
+            style={[s.bannerBtn, { backgroundColor: t.accent }]}
+            accessibilityRole="button"
+          >
+            <Text style={{ color: '#142041', fontWeight: '800' }}>Çevir</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => { dismissed.current.add(clip); setClip(null); }}
+            style={s.bannerBtn}
+            accessibilityRole="button"
+            accessibilityLabel="Kapat"
+          >
+            <Text style={{ color: t.muted, fontWeight: '700' }}>Kapat</Text>
+          </Pressable>
+        </View>
+      )}
 
       <ScrollView contentContainerStyle={s.content}>
         {books.length === 0 && (
@@ -131,6 +166,8 @@ const s = StyleSheet.create({
   input: { flex: 1, backgroundColor: 'rgba(255,255,255,0.14)', color: '#fff', borderRadius: 12, paddingHorizontal: 14, height: 48 },
   btn: { borderRadius: 12, paddingHorizontal: 16, justifyContent: 'center' },
   btnText: { color: '#142041', fontWeight: '800' },
+  banner: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 20, marginTop: 14, padding: 12, borderRadius: 14, borderWidth: 1.5 },
+  bannerBtn: { minHeight: 44, minWidth: 56, paddingHorizontal: 10, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   content: { padding: 20, gap: 10 },
   label: { fontSize: 11, letterSpacing: 1.4, fontWeight: '600', marginTop: 6 },
   empty: { alignItems: 'center', gap: 10, paddingTop: 32, paddingHorizontal: 24 },

@@ -23,6 +23,10 @@ function getDb() {
           lastPos INTEGER NOT NULL DEFAULT 0,
           totalChars INTEGER NOT NULL DEFAULT 0
         );
+        CREATE TABLE IF NOT EXISTS settings (
+          key TEXT PRIMARY KEY NOT NULL,
+          value TEXT NOT NULL
+        );
         CREATE TABLE IF NOT EXISTS marks (
           bookId TEXT NOT NULL,
           pos INTEGER NOT NULL,
@@ -105,4 +109,15 @@ export async function toggleMark(bookId: string, from: number, to: number): Prom
 export function progressOf(b: Pick<BookRow, 'lastPos' | 'totalChars' | 'lastPage' | 'pageCount'>): number {
   if (b.totalChars > 0) return Math.min(1, b.lastPos / b.totalChars);
   return b.pageCount ? Math.min(1, b.lastPage / b.pageCount) : 0;
+}
+
+export async function getAllSettings(): Promise<Record<string, string>> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<{ key: string; value: string }>('SELECT key, value FROM settings');
+  return Object.fromEntries(rows.map((r) => [r.key, r.value]));
+}
+
+export async function setSetting(key: string, value: string) {
+  const db = await getDb();
+  await db.runAsync('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', key, value);
 }
