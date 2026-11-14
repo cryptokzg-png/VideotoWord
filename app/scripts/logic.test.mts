@@ -111,6 +111,22 @@ eq(sp.filter((x) => x.hit).map((x) => x.text), ['ISPARTA', 'isparta'], 'split ma
 eq(splitByMatch('abc', 'x').length, 1, 'no match -> one piece');
 eq(splitByMatch('abc', 'a')[0].hit, false, 'query shorter than 2 ignored');
 
+// ---- quotes ----
+import { tokenize, selectQuote, highlightKey, shareText } from '../src/lib/notes';
+const body = 'bir iki  üç\ndört beş';
+eq(tokenize(body).map((t) => t.text).join(''), body, 'tokenize keeps text');
+eq(tokenize(body).filter((t) => t.word).map((t) => t.index), [0, 1, 2, 3, 4], 'word indexes');
+const q1 = selectQuote(body, 3, 1); // reversed order is fine
+eq(q1.quote, 'iki üç dört', 'quote range');
+eq(q1.offset, 'bir'.length, 'offset counts non-space chars before');
+eq(selectQuote(body, 4, 4), { quote: 'beş', offset: 'birikiüçdört'.length }, 'single word');
+eq(highlightKey('bir iki üç dört beş altı'), 'bir iki üç dört', 'highlight key');
+eq(shareText('söz', 'Kitap', 'not').includes('— Kitap · Barış Kitaplık'), true, 'share text');
+// a quote offset must map back to the same place via pageForPos
+const notePages = ['# T\n\nbir iki üç', 'dört beş altı'];
+const stp = pageStarts(notePages);
+eq(pageForPos(stp, stp[1] + selectQuote('dört beş altı', 1, 1).offset), 1, 'quote position lands on its page');
+
 // ---- settings ----
 import { parseSettings, DEFAULTS } from '../src/lib/settingsModel';
 eq(parseSettings({}), DEFAULTS, 'defaults');

@@ -19,7 +19,7 @@ export type RootStackParamList = {
   Library: undefined;
   Convert: { videoId: string };
   BookDetail: { id: string };
-  Reader: { id: string };
+  Reader: { id: string; pos?: number; hl?: string };
   Settings: undefined;
 };
 

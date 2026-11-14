@@ -1,16 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentRef, type ReactNode } from 'react';
 import {
-  ActivityIndicator, Alert, Image, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View,
+  ActivityIndicator, Alert, Image, Linking, Modal, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, useWindowDimensions, View,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../App';
-import { getBook, getMarks, setLastPos, setPageCount, toggleMark } from '../db/db';
+import { addNote, deleteNote, getBook, getMarks, listNotes, setLastPos, setNoteFavorite, setPageCount, toggleMark, updateNoteText } from '../db/db';
+import { highlightKey, selectQuote, shareText, tokenize } from '../lib/notes';
 import { COVER, pageForPos, pageStarts, pagesFromLines } from '../lib/layout';
 import { searchBook, splitByMatch, type SearchHit } from '../lib/search';
 import { exportPdf, sharePageImage } from '../lib/shareBook';
 import { describeBook } from '../lib/sizeLabel';
-import type { Book } from '../types';
+import type { Book, Note } from '../types';
 import { FONT_FAMILIES, FONT_SCALES, useSettings } from '../settings';
 import { useIsDark } from '../theme';
 import { PageFlipper, type FlipHandle } from '../components/PageFlipper';
@@ -38,15 +39,18 @@ function Heading({ chapter, title, c, family }: { chapter: number; title: string
 
 type TextStyleSpec = { fontFamily: string; fontSize: number; lineHeight: number };
 
-function TextPage({ text, chapter, c, width, height, spec, highlight }: {
+function TextPage({ text, chapter, c, width, height, spec, highlight, selecting, sel, onWord }: {
   text: string; chapter: number; c: Palette; width: number; height: number; spec: TextStyleSpec; highlight: string;
+  selecting?: boolean; sel?: { a: number; b: number } | null; onWord?: (i: number) => void;
 }) {
   const isHeading = text.startsWith('# ');
   const sep = text.indexOf('\n\n');
   const title = isHeading ? text.slice(2, sep) : null;
   const body = isHeading ? text.slice(sep + 2) : text;
-  // highlighting only changes the background, so it never changes the line breaks
-  const pieces = highlight ? splitByMatch(body, highlight) : null;
+  // highlight / selection only change the background, so they never change the line breaks
+  const pieces = !selecting && highlight ? splitByMatch(body, highlight) : null;
+  const lo = sel ? Math.min(sel.a, sel.b) : -1;
+  const hi = sel ? Math.max(sel.a, sel.b) : -1;
   return (
     <View style={{ width, height, paddingHorizontal: PAD_X, paddingTop: PAD_TOP, overflow: 'hidden' }}>
       {title !== null && <Heading chapter={chapter} title={title} c={c} family={spec.fontFamily} />}
@@ -56,9 +60,23 @@ function TextPage({ text, chapter, c, width, height, spec, highlight }: {
         android_hyphenationFrequency="none"
         style={{ color: c.text, ...spec }}
       >
-        {pieces
-          ? pieces.map((p, i) => (p.hit ? <Text key={i} style={{ backgroundColor: c.mark }}>{p.text}</Text> : p.text))
-          : body}
+        {selecting
+          ? tokenize(body).map((t, i) =>
+              t.word ? (
+                <Text
+                  key={i}
+                  onPress={() => onWord?.(t.index)}
+                  style={t.index >= lo && t.index <= hi ? { backgroundColor: c.mark } : undefined}
+                >
+                  {t.text}
+                </Text>
+              ) : (
+                t.text
+              ),
+            )
+          : pieces
+            ? pieces.map((p, i) => (p.hit ? <Text key={i} style={{ backgroundColor: c.mark }}>{p.text}</Text> : p.text))
+            : body}
       </Text>
     </View>
   );
@@ -139,13 +157,18 @@ export default function ReaderScreen({ route, navigation }: Props) {
   const [page, setPage] = useState(0);
   const [large, setLarge] = useState(false);
   const [marks, setMarks] = useState<number[]>([]);
-  const [sheet, setSheet] = useState<null | 'menu' | 'chapters' | 'marks'>(null);
+  const [sheet, setSheet] = useState<null | 'menu' | 'chapters' | 'marks' | 'notes'>(null);
   const [goto, setGoto] = useState(false);
   const [gotoText, setGotoText] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState('');
-  const [highlight, setHighlight] = useState('');
+  const [highlight, setHighlight] = useState(route.params.hl ?? '');
   const [busy, setBusy] = useState<string | null>(null);
+  const [notes, setNotes] = useState<Note[]>([]);
+  const [selecting, setSelecting] = useState(false);
+  const [sel, setSel] = useState<{ a: number; b: number } | null>(null);
+  const [noteDialog, setNoteDialog] = useState<null | { id?: number; quote: string; pos: number; text: string }>(null);
+  const [notesTab, setNotesTab] = useState<'all' | 'fav'>('all');
   const [area, setArea] = useState({ w: 0, h: 0 });
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -165,13 +188,14 @@ export default function ReaderScreen({ route, navigation }: Props) {
   useEffect(() => {
     getBook(route.params.id).then((b) => {
       if (b) {
-        posRef.current = b.lastPos;
-        startedFresh.current = b.lastPos === 0;
+        posRef.current = route.params.pos ?? b.lastPos;
+        startedFresh.current = posRef.current === 0 && route.params.pos === undefined;
       }
       setBook(b);
     });
     getMarks(route.params.id).then(setMarks);
-  }, [route.params.id]);
+    listNotes(route.params.id).then(setNotes);
+  }, [route.params.id, route.params.pos]);
 
   const starts = useMemo(() => pageStarts(pages), [pages]);
 
@@ -204,6 +228,8 @@ export default function ReaderScreen({ route, navigation }: Props) {
     (i: number) => {
       if (!book) return;
       setPage(i);
+      setSelecting(false);
+      setSel(null);
       posRef.current = starts[i] ?? 0;
       startedFresh.current = false;
       setLastPos(book.id, starts[i] ?? 0);
@@ -242,6 +268,28 @@ export default function ReaderScreen({ route, navigation }: Props) {
     } finally {
       setBusy(null);
     }
+  };
+
+  const bodyOfPage = (i: number) => {
+    const t = pages[i] ?? '';
+    return t.startsWith('# ') ? t.slice(t.indexOf('\n\n') + 2) : t;
+  };
+
+  const onWord = (i: number) =>
+    setSel((cur) => (!cur || cur.a !== cur.b ? { a: i, b: i } : { a: cur.a, b: i }));
+
+  const picked = sel && selecting ? selectQuote(bodyOfPage(page), sel.a, sel.b) : null;
+
+  const saveQuote = async (favorite: boolean, text: string, dialog?: { id?: number; quote: string; pos: number }) => {
+    if (!book) return;
+    const d = dialog ?? (picked ? { quote: picked.quote, pos: (starts[page] ?? 0) + picked.offset } : null);
+    if (!d) return;
+    if (d.id !== undefined) await updateNoteText(d.id, text.trim());
+    else await addNote({ bookId: book.id, pos: d.pos, quote: d.quote, note: text.trim(), favorite });
+    setNotes(await listNotes(book.id));
+    setSelecting(false);
+    setSel(null);
+    setNoteDialog(null);
   };
 
   const closeAnd = (fn: () => void) => {
@@ -319,7 +367,10 @@ export default function ReaderScreen({ route, navigation }: Props) {
               pages[i] === COVER ? (
                 <CoverPage book={book} pageCount={Math.max(1, pages.length - 1)} c={c} width={width} height={area.h} family={family} />
               ) : (
-                <TextPage text={pages[i]} chapter={chapterOf[i]} c={c} width={width} height={area.h} spec={spec} highlight={highlight} />
+                <TextPage
+                  text={pages[i]} chapter={chapterOf[i]} c={c} width={width} height={area.h} spec={spec} highlight={highlight}
+                  selecting={selecting && i === page} sel={i === page ? sel : null} onWord={onWord}
+                />
               )
             }
           />
@@ -337,6 +388,13 @@ export default function ReaderScreen({ route, navigation }: Props) {
             </Pressable>
             <Pressable onPress={() => pinch(1)} style={[s.square, { borderColor: c.border }]} accessibilityRole="button" accessibilityLabel="Yazıyı büyüt">
               <Text style={{ color: c.text, fontWeight: '700', fontSize: 18 }}>A+</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => { setSel(null); setSelecting((v) => !v); }}
+              style={[s.square, { backgroundColor: selecting ? c.accent : 'transparent', borderColor: selecting ? c.accent : c.border }]}
+              accessibilityRole="button" accessibilityLabel="Söz seç ve not al" accessibilityState={{ selected: selecting }}
+            >
+              <Text style={{ color: selecting ? c.onAccent : c.text, fontSize: 18 }}>✎</Text>
             </Pressable>
             <Pressable
               onPress={flipMark}
@@ -360,6 +418,38 @@ export default function ReaderScreen({ route, navigation }: Props) {
         </View>
       </View>
 
+      {selecting && (
+        <View
+          style={[s.selBar, { backgroundColor: c.card, borderColor: c.accent, bottom: Math.max(insets.bottom, 12) }]}
+          accessibilityLiveRegion="polite"
+        >
+          <Text numberOfLines={2} style={{ color: picked ? c.text : c.muted, fontSize: 14, minHeight: 38 }}>
+            {picked ? `“${picked.quote}”` : 'Söz seç: önce ilk kelimeye, sonra son kelimeye dokun.'}
+          </Text>
+          <View style={s.selActions}>
+            <Pressable onPress={() => { setSelecting(false); setSel(null); }} style={s.selBtn} accessibilityRole="button">
+              <Text style={{ color: c.muted, fontWeight: '700' }}>Vazgeç</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => saveQuote(true, '')}
+              disabled={!picked}
+              style={[s.selBtn, { opacity: picked ? 1 : 0.4 }]}
+              accessibilityRole="button"
+            >
+              <Text style={{ color: c.accent, fontWeight: '800' }}>★ Favori söz</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => picked && setNoteDialog({ quote: picked.quote, pos: (starts[page] ?? 0) + picked.offset, text: '' })}
+              disabled={!picked}
+              style={[s.selBtn, s.selPrimary, { backgroundColor: c.accent, opacity: picked ? 1 : 0.4 }]}
+              accessibilityRole="button"
+            >
+              <Text style={{ color: c.onAccent, fontWeight: '800' }}>Notlara ekle</Text>
+            </Pressable>
+          </View>
+        </View>
+      )}
+
       {/* Menü */}
       <Sheet visible={sheet === 'menu'} onClose={() => setSheet(null)} title={book.title} c={c}>
         <Row
@@ -370,6 +460,14 @@ export default function ReaderScreen({ route, navigation }: Props) {
           c={c}
         />
         <Row label="Yer imleri" right={marks.length ? String(marks.length) : undefined} onPress={() => closeAnd(() => setSheet('marks'))} c={c} />
+        <Row
+          label="Notlar ve sözler"
+          hint="Seçtiğin sözler ve notların"
+          right={notes.length ? String(notes.length) : undefined}
+          onPress={() => closeAnd(() => setSheet('notes'))}
+          c={c}
+        />
+        <Row label="Söz seç ve not al" onPress={() => closeAnd(() => { setSel(null); setSelecting(true); })} c={c} />
         <Row label="Kitapta ara" onPress={() => closeAnd(() => { setQuery(''); setSearchOpen(true); })} c={c} />
         <Row label="Sayfaya git" onPress={() => closeAnd(() => { setGotoText(''); setGoto(true); })} c={c} />
         <Row label={isDark ? 'Gündüz modu' : 'Gece modu'} onPress={() => update({ mode: isDark ? 'day' : 'night' })} c={c} />
@@ -417,6 +515,109 @@ export default function ReaderScreen({ route, navigation }: Props) {
           <Row key={m} label={`★ Sayfa ${pageNo(m)}`} accent onPress={() => closeAnd(() => jump(pageNo(m)))} c={c} />
         ))}
       </Sheet>
+
+      {/* Notlar ve sözler */}
+      <Sheet visible={sheet === 'notes'} onClose={() => setSheet(null)} title="Notlar ve sözler" c={c}>
+        <View style={s.tabs}>
+          {([['all', `Notlarım (${notes.length})`], ['fav', `★ Favori sözler (${notes.filter((x) => x.favorite).length})`]] as const).map(([key, label]) => {
+            const on = notesTab === key;
+            return (
+              <Pressable
+                key={key}
+                onPress={() => setNotesTab(key)}
+                style={[s.tab, { backgroundColor: on ? c.accent : 'transparent', borderColor: on ? c.accent : c.border }]}
+                accessibilityRole="button"
+                accessibilityState={{ selected: on }}
+              >
+                <Text style={{ color: on ? c.onAccent : c.text, fontWeight: on ? '800' : '500', fontSize: 13 }}>{label}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+        {notes.filter((x) => notesTab === 'all' || x.favorite).length === 0 && (
+          <Text style={{ color: c.muted, padding: 12 }}>
+            {notesTab === 'fav' ? 'Henüz favori söz yok.' : 'Henüz not yok.'} Okurken ✎ düğmesine dokunup bir söz seç.
+          </Text>
+        )}
+        {notes.filter((x) => notesTab === 'all' || x.favorite).map((n) => (
+          <View key={n.id} style={[s.noteItem, { borderColor: c.border }]}>
+            <View style={[s.noteBar, { backgroundColor: c.accent }]} />
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: c.text, fontSize: 15, lineHeight: 22 }}>“{n.quote}”</Text>
+              {!!n.note && <Text style={{ color: c.muted, fontSize: 14, marginTop: 6 }}>✎ {n.note}</Text>}
+              <Text style={{ color: c.muted, fontSize: 12, marginTop: 6 }}>Sayfa {pageNo(n.pos)}</Text>
+              <View style={s.noteActions}>
+                <Pressable onPress={() => closeAnd(() => { setHighlight(highlightKey(n.quote)); jump(pageNo(n.pos)); })} style={s.noteBtn} accessibilityRole="button">
+                  <Text style={{ color: c.accent, fontWeight: '700', fontSize: 13 }}>Git</Text>
+                </Pressable>
+                <Pressable onPress={() => Share.share({ message: shareText(n.quote, book.title, n.note) }).catch(() => {})} style={s.noteBtn} accessibilityRole="button">
+                  <Text style={{ color: c.text, fontWeight: '600', fontSize: 13 }}>Paylaş</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => closeAnd(() => setNoteDialog({ id: n.id, quote: n.quote, pos: n.pos, text: n.note }))}
+                  style={s.noteBtn}
+                  accessibilityRole="button"
+                >
+                  <Text style={{ color: c.text, fontWeight: '600', fontSize: 13 }}>{n.note ? 'Düzenle' : 'Not ekle'}</Text>
+                </Pressable>
+                <Pressable
+                  onPress={async () => { await setNoteFavorite(n.id, !n.favorite); setNotes(await listNotes(book.id)); }}
+                  style={s.noteBtn}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: !!n.favorite }}
+                >
+                  <Text style={{ color: n.favorite ? c.accent : c.text, fontWeight: '700', fontSize: 15 }}>{n.favorite ? '★' : '☆'}</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() =>
+                    Alert.alert('Notu sil', 'Bu söz ve notu silinsin mi?', [
+                      { text: 'Vazgeç', style: 'cancel' },
+                      { text: 'Sil', style: 'destructive', onPress: async () => { await deleteNote(n.id); setNotes(await listNotes(book.id)); } },
+                    ])
+                  }
+                  style={s.noteBtn}
+                  accessibilityRole="button"
+                  accessibilityLabel="Sil"
+                >
+                  <Text style={{ color: '#E5546B', fontWeight: '700', fontSize: 13 }}>Sil</Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        ))}
+      </Sheet>
+
+      {/* Not ekle / düzenle */}
+      <Modal visible={!!noteDialog} transparent animationType="fade" onRequestClose={() => setNoteDialog(null)}>
+        <View style={s.backdrop}>
+          <View style={[s.dialog, { backgroundColor: c.card }]}>
+            <Text style={{ color: c.text, fontWeight: '800' }}>{noteDialog?.id !== undefined ? 'Notu düzenle' : 'Notlara ekle'}</Text>
+            <Text numberOfLines={4} style={{ color: c.muted, fontStyle: 'italic' }}>“{noteDialog?.quote}”</Text>
+            <TextInput
+              value={noteDialog?.text ?? ''}
+              onChangeText={(t) => setNoteDialog((d) => (d ? { ...d, text: t } : d))}
+              placeholder="Kendi notun (isteğe bağlı)"
+              placeholderTextColor={c.muted}
+              multiline
+              autoFocus
+              style={[s.gotoInput, { color: c.text, borderColor: c.border, minHeight: 80, textAlignVertical: 'top', fontSize: 16 }]}
+              accessibilityLabel="Not"
+            />
+            <View style={{ flexDirection: 'row', gap: 16, justifyContent: 'flex-end' }}>
+              <Pressable onPress={() => setNoteDialog(null)} accessibilityRole="button" style={s.noteBtn}>
+                <Text style={{ color: c.muted }}>Vazgeç</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => noteDialog && saveQuote(false, noteDialog.text, noteDialog)}
+                accessibilityRole="button"
+                style={s.noteBtn}
+              >
+                <Text style={{ color: c.accent, fontWeight: '800' }}>Kaydet</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* Kitapta ara */}
       <Modal visible={searchOpen} animationType="slide" onRequestClose={() => setSearchOpen(false)}>
@@ -512,6 +713,16 @@ const s = StyleSheet.create({
   sheetClose: { minHeight: 44, minWidth: 56, alignItems: 'flex-end', justifyContent: 'center' },
   row: { flexDirection: 'row', alignItems: 'center', minHeight: 52, paddingVertical: 8, paddingHorizontal: 4 },
   sep: { height: 1, marginVertical: 6 },
+  selBar: { position: 'absolute', left: 20, right: 20, borderWidth: 1.5, borderRadius: 16, padding: 12, gap: 8 },
+  selActions: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 6 },
+  selBtn: { minHeight: 44, paddingHorizontal: 12, borderRadius: 12, justifyContent: 'center' },
+  selPrimary: { paddingHorizontal: 16 },
+  tabs: { flexDirection: 'row', gap: 8, marginBottom: 8 },
+  tab: { minHeight: 40, paddingHorizontal: 12, borderRadius: 20, borderWidth: 1, justifyContent: 'center' },
+  noteItem: { flexDirection: 'row', gap: 12, paddingVertical: 12, borderBottomWidth: 1 },
+  noteBar: { width: 4, borderRadius: 2 },
+  noteActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 2, marginTop: 4 },
+  noteBtn: { minHeight: 44, minWidth: 44, paddingHorizontal: 10, justifyContent: 'center', alignItems: 'center' },
   searchInput: { flex: 1, height: 48, borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, fontSize: 16 },
   hit: { paddingVertical: 12, borderBottomWidth: 1 },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-start', paddingTop: 120, paddingHorizontal: 32 },

@@ -1,12 +1,13 @@
 import { useCallback, useRef, useState, type ComponentRef } from 'react';
-import { Alert, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Image, Pressable, Share, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../App';
-import { deleteBook, listBooks, saveBook, setFavorite } from '../db/db';
-import type { BookRow } from '../types';
+import { deleteBook, listBooks, listFavoriteQuotes, saveBook, setFavorite, setNoteFavorite } from '../db/db';
+import type { BookRow, Note } from '../types';
+import { highlightKey, shareText } from '../lib/notes';
 import { BookCard, ContinueCard } from '../components/BookCard';
 import { parseVideoId } from '../lib/youtube';
 import { fold } from '../lib/search';
@@ -23,12 +24,14 @@ export default function LibraryScreen({ navigation }: Props) {
   const [books, setBooks] = useState<BookRow[]>([]);
   const [link, setLink] = useState('');
   const [q, setQ] = useState('');
-  const [filter, setFilter] = useState<'all' | 'fav'>('all');
+  const [filter, setFilter] = useState<'all' | 'fav' | 'quotes'>('all');
+  const [quotes, setQuotes] = useState<Note[]>([]);
   const input = useRef<ComponentRef<typeof TextInput>>(null);
   const [clip, setClip] = useState<string | null>(null); // video id found on the clipboard
   const dismissed = useRef<Set<string>>(new Set());
 
   const load = useCallback(() => {
+    listFavoriteQuotes().then(setQuotes).catch(() => {});
     listBooks().then((rows) => {
       setBooks(rows);
       // offer to convert a YouTube link that is on the clipboard
@@ -77,6 +80,7 @@ export default function LibraryScreen({ navigation }: Props) {
   );
   const favCount = books.filter((b) => b.favorite).length;
   const flat = filter === 'fav' || !!query; // searching or viewing favorites: one simple list
+  const shownQuotes = quotes.filter((n) => !query || fold(`${n.quote} ${n.bookTitle ?? ''}`).includes(query));
 
   // most recently opened-but-unfinished book, else none
   const reading = books.find((b) => progressOf(b) > 0 && progressOf(b) < 0.97);
@@ -159,7 +163,7 @@ export default function LibraryScreen({ navigation }: Props) {
               returnKeyType="search"
             />
             <View style={s.chips}>
-              {([['all', `Tümü (${books.length})`], ['fav', `★ Favoriler (${favCount})`]] as const).map(([key, label]) => {
+              {([['all', `Tümü (${books.length})`], ['fav', `★ Favoriler (${favCount})`], ['quotes', `❝ Sözler (${quotes.length})`]] as const).map(([key, label]) => {
                 const on = filter === key;
                 return (
                   <Pressable
@@ -177,7 +181,57 @@ export default function LibraryScreen({ navigation }: Props) {
           </>
         )}
 
-        {flat ? (
+        {filter === 'quotes' ? (
+          <>
+            {shownQuotes.map((n) => (
+              <View key={n.id} style={[s.quoteCard, { backgroundColor: t.surface, borderColor: t.border }]}>
+                <View style={[s.quoteBar, { backgroundColor: t.accent }]} />
+                <View style={{ flex: 1 }}>
+                  <Pressable
+                    onPress={() => navigation.navigate('Reader', { id: n.bookId, pos: n.pos, hl: highlightKey(n.quote) })}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Sözü kitapta aç: ${n.quote}`}
+                  >
+                    <Text style={{ color: t.text, fontFamily: serif, fontSize: 17, lineHeight: 25 }}>“{n.quote}”</Text>
+                    {!!n.note && <Text style={{ color: t.muted, marginTop: 6 }}>✎ {n.note}</Text>}
+                    <Text style={{ color: t.primary, fontSize: 12, fontWeight: '700', marginTop: 8 }} numberOfLines={1}>{n.bookTitle}</Text>
+                  </Pressable>
+                  <View style={s.quoteActions}>
+                    <Pressable
+                      onPress={() => navigation.navigate('Reader', { id: n.bookId, pos: n.pos, hl: highlightKey(n.quote) })}
+                      style={s.quoteBtn}
+                      accessibilityRole="button"
+                    >
+                      <Text style={{ color: t.primary, fontWeight: '700' }}>Kitapta aç</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => Share.share({ message: shareText(n.quote, n.bookTitle ?? '', n.note) }).catch(() => {})}
+                      style={s.quoteBtn}
+                      accessibilityRole="button"
+                    >
+                      <Text style={{ color: t.text, fontWeight: '600' }}>Paylaş</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={async () => { await setNoteFavorite(n.id, false); load(); }}
+                      style={s.quoteBtn}
+                      accessibilityRole="button"
+                      accessibilityLabel="Favori sözlerden çıkar"
+                    >
+                      <Text style={{ color: t.accent, fontSize: 20 }}>★</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              </View>
+            ))}
+            {shownQuotes.length === 0 && (
+              <Text style={{ color: t.muted, textAlign: 'center', marginTop: 24 }}>
+                {quotes.length === 0
+                  ? 'Henüz favori söz yok. Okurken ✎ düğmesiyle bir söz seçip "★ Favori söz"e dokun.'
+                  : 'Sonuç bulunamadı.'}
+              </Text>
+            )}
+          </>
+        ) : flat ? (
           <>
             {filtered.map((b) => (
               <BookCard
@@ -274,6 +328,10 @@ const s = StyleSheet.create({
   bannerBtn: { minHeight: 44, minWidth: 56, paddingHorizontal: 10, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   content: { padding: 20, gap: 10 },
   label: { fontSize: 11, letterSpacing: 1.4, fontWeight: '600', marginTop: 6 },
+  quoteCard: { flexDirection: 'row', gap: 12, borderWidth: 1, borderRadius: 16, padding: 14 },
+  quoteBar: { width: 4, borderRadius: 2 },
+  quoteActions: { flexDirection: 'row', gap: 4, marginTop: 4, marginLeft: -10 },
+  quoteBtn: { minHeight: 44, minWidth: 44, paddingHorizontal: 10, justifyContent: 'center', alignItems: 'center' },
   search: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, height: 46 },
   chips: { flexDirection: 'row', gap: 8, marginBottom: 4 },
   chip: { minHeight: 40, paddingHorizontal: 14, borderRadius: 20, borderWidth: 1, justifyContent: 'center' },

@@ -1,5 +1,5 @@
 import * as SQLite from 'expo-sqlite';
-import type { Book, BookRow } from '../types';
+import type { Book, BookRow, Note } from '../types';
 
 let dbPromise: Promise<SQLite.SQLiteDatabase> | null = null;
 
@@ -27,6 +27,15 @@ function getDb() {
         CREATE TABLE IF NOT EXISTS settings (
           key TEXT PRIMARY KEY NOT NULL,
           value TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS notes (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          bookId TEXT NOT NULL,
+          pos INTEGER NOT NULL,
+          quote TEXT NOT NULL,
+          note TEXT NOT NULL DEFAULT '',
+          favorite INTEGER NOT NULL DEFAULT 0,
+          createdAt INTEGER NOT NULL
         );
         CREATE TABLE IF NOT EXISTS marks (
           bookId TEXT NOT NULL,
@@ -79,6 +88,7 @@ export async function deleteBook(id: string) {
   const db = await getDb();
   await db.runAsync('DELETE FROM books WHERE id = ?', id);
   await db.runAsync('DELETE FROM marks WHERE bookId = ?', id);
+  await db.runAsync('DELETE FROM notes WHERE bookId = ?', id);
 }
 
 export async function setFavorite(id: string, on: boolean) {
@@ -126,4 +136,42 @@ export async function getAllSettings(): Promise<Record<string, string>> {
 export async function setSetting(key: string, value: string) {
   const db = await getDb();
   await db.runAsync('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', key, value);
+}
+
+export async function addNote(n: { bookId: string; pos: number; quote: string; note: string; favorite: boolean }): Promise<number> {
+  const db = await getDb();
+  const r = await db.runAsync(
+    'INSERT INTO notes (bookId,pos,quote,note,favorite,createdAt) VALUES (?,?,?,?,?,?)',
+    n.bookId, n.pos, n.quote, n.note, n.favorite ? 1 : 0, Date.now(),
+  );
+  return r.lastInsertRowId;
+}
+
+export async function listNotes(bookId: string): Promise<Note[]> {
+  const db = await getDb();
+  return db.getAllAsync<Note>('SELECT * FROM notes WHERE bookId = ? ORDER BY pos, id', bookId);
+}
+
+export async function updateNoteText(id: number, note: string) {
+  const db = await getDb();
+  await db.runAsync('UPDATE notes SET note = ? WHERE id = ?', note, id);
+}
+
+export async function setNoteFavorite(id: number, on: boolean) {
+  const db = await getDb();
+  await db.runAsync('UPDATE notes SET favorite = ? WHERE id = ?', on ? 1 : 0, id);
+}
+
+export async function deleteNote(id: number) {
+  const db = await getDb();
+  await db.runAsync('DELETE FROM notes WHERE id = ?', id);
+}
+
+/** Favorite quotes from every book, newest first. */
+export async function listFavoriteQuotes(): Promise<Note[]> {
+  const db = await getDb();
+  return db.getAllAsync<Note>(
+    `SELECT n.*, b.title AS bookTitle FROM notes n JOIN books b ON b.id = n.bookId
+     WHERE n.favorite = 1 ORDER BY n.createdAt DESC`,
+  );
 }

@@ -18,3 +18,14 @@ export type Book = {
 };
 
 export type BookRow = Omit<Book, 'chapters' | 'pages'> & { pageCount: number };
+
+export type Note = {
+  id: number;
+  bookId: string;
+  pos: number; // reading position where the quote starts
+  quote: string;
+  note: string; // user's own comment, may be empty
+  favorite: number; // 1 = favorite quote
+  createdAt: number;
+  bookTitle?: string; // only when listing across books
+};
