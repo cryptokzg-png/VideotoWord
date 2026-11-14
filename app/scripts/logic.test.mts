@@ -112,7 +112,7 @@ eq(splitByMatch('abc', 'x').length, 1, 'no match -> one piece');
 eq(splitByMatch('abc', 'a')[0].hit, false, 'query shorter than 2 ignored');
 
 // ---- quotes ----
-import { tokenize, selectQuote, highlightKey, shareText } from '../src/lib/notes';
+import { tokenize, selectQuote, highlightKey, shareText, paragraphRange, tapWord, wordCount } from '../src/lib/notes';
 const body = 'bir iki  üç\ndört beş';
 eq(tokenize(body).map((t) => t.text).join(''), body, 'tokenize keeps text');
 eq(tokenize(body).filter((t) => t.word).map((t) => t.index), [0, 1, 2, 3, 4], 'word indexes');
@@ -126,6 +126,18 @@ eq(shareText('söz', 'Kitap', 'not').includes('— Kitap · Barış Kitaplık'),
 const notePages = ['# T\n\nbir iki üç', 'dört beş altı'];
 const stp = pageStarts(notePages);
 eq(pageForPos(stp, stp[1] + selectQuote('dört beş altı', 1, 1).offset), 1, 'quote position lands on its page');
+
+const para = 'bir iki üç\n\ndört beş\n\naltı yedi sekiz';
+eq(wordCount(para), 8, 'word count');
+eq(paragraphRange(para, 1), { a: 0, b: 2 }, 'paragraph 1');
+eq(paragraphRange(para, 3), { a: 3, b: 4 }, 'paragraph 2');
+eq(paragraphRange(para, 7), { a: 5, b: 7 }, 'last paragraph');
+eq(paragraphRange('tek paragraf burada', 1), { a: 0, b: 2 }, 'single paragraph');
+eq(tapWord(null, 4), { a: 4, b: 4 }, 'first tap');
+eq(tapWord({ a: 4, b: 4 }, 7), { a: 4, b: 7 }, 'second tap grows forward');
+eq(tapWord({ a: 4, b: 4 }, 2), { a: 2, b: 4 }, 'tap before grows backward');
+eq(tapWord({ a: 2, b: 7 }, 9), { a: 2, b: 9 }, 'third tap keeps growing');
+eq(tapWord({ a: 2, b: 7 }, 5), { a: 5, b: 5 }, 'tap inside restarts');
 
 // ---- settings ----
 import { parseSettings, DEFAULTS } from '../src/lib/settingsModel';

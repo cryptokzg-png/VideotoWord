@@ -37,3 +37,38 @@ export function highlightKey(quote: string, words = 4): string {
 export function shareText(quote: string, title: string, note?: string): string {
   return `“${quote}”${note ? `\n\n${note}` : ''}\n\n— ${title} · Barış Kitaplık`;
 }
+
+/** Number of words in a page body. */
+export function wordCount(body: string): number {
+  return tokenize(body).filter((t) => t.word).length;
+}
+
+/** First and last word index of the paragraph (text between blank lines) containing word `i`. */
+export function paragraphRange(body: string, i: number): { a: number; b: number } {
+  let start = 0;
+  let last = -1;
+  let found: { a: number; b: number } | null = null;
+  for (const t of tokenize(body)) {
+    if (t.word) {
+      last = t.index;
+    } else if ((t.text.match(/\n/g) ?? []).length >= 2) {
+      // blank line: the paragraph ends at the previous word
+      if (i >= start && i <= last) found = { a: start, b: last };
+      start = last + 1;
+      if (found) return found;
+    }
+  }
+  return found ?? { a: start, b: Math.max(start, last) };
+}
+
+/**
+ * Selection after tapping word `i`: the first tap picks one word, further taps outside the
+ * selection grow it to include that word, a tap inside it starts over from that word.
+ */
+export function tapWord(sel: { a: number; b: number } | null, i: number): { a: number; b: number } {
+  if (!sel) return { a: i, b: i };
+  const lo = Math.min(sel.a, sel.b);
+  const hi = Math.max(sel.a, sel.b);
+  if (i >= lo && i <= hi) return { a: i, b: i };
+  return { a: Math.min(lo, i), b: Math.max(hi, i) };
+}

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, ToastAndroid, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../App';
 import { deleteBook, getBook, setFavorite } from '../db/db';
@@ -60,6 +60,7 @@ export default function BookDetailScreen({ route, navigation }: Props) {
             const on = !book.favorite;
             await setFavorite(book.id, on);
             setBook({ ...book, favorite: on ? 1 : 0 });
+            if (Platform.OS === 'android') ToastAndroid.show(on ? '★ Favorilere eklendi' : 'Favorilerden çıkarıldı', ToastAndroid.SHORT);
           }}
           style={[s.secondary, { borderColor: book.favorite ? t.accent : t.border, backgroundColor: t.surface }]}
           accessibilityRole="button"
@@ -86,6 +87,14 @@ export default function BookDetailScreen({ route, navigation }: Props) {
         >
           <Text style={{ color: t.text, fontWeight: '600' }}>PDF olarak dışa aktar</Text>
         </Pressable>
+        <Pressable
+          onPress={confirmDelete}
+          style={[s.secondary, s.deleteBtn, { borderColor: t.danger, backgroundColor: t.surface }]}
+          accessibilityRole="button"
+          accessibilityLabel="Kitabı sil"
+        >
+          <Text style={{ color: t.danger, fontWeight: '700' }}>Kitabı sil</Text>
+        </Pressable>
       </View>
       {busy && <Text style={{ color: t.muted }}>{busy}</Text>}
 
@@ -93,15 +102,6 @@ export default function BookDetailScreen({ route, navigation }: Props) {
       {book.chapters.map((c, i) => (
         <Text key={i} style={{ color: t.muted, paddingVertical: 4 }}>{i + 1}. {c.title}</Text>
       ))}
-
-      <Pressable
-        onPress={confirmDelete}
-        style={[s.delete, { borderColor: t.danger }]}
-        accessibilityRole="button"
-        accessibilityLabel="Kitabı sil"
-      >
-        <Text style={{ color: t.danger, fontWeight: '700' }}>Kitabı sil</Text>
-      </Pressable>
     </ScrollView>
   );
 }
@@ -116,5 +116,5 @@ const s = StyleSheet.create({
   row: { flexDirection: 'row', gap: 10 },
   secondary: { flex: 1, minHeight: 48, borderRadius: 12, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   h2: { fontSize: 20, fontWeight: '700', marginTop: 12 },
-  delete: { marginTop: 24, minHeight: 48, borderRadius: 12, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
+  deleteBtn: { flex: 0.6, borderWidth: 1.5 },
 });

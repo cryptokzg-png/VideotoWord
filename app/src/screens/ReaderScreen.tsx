@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentRef, type ReactNode } from 'react';
 import {
-  ActivityIndicator, Alert, Image, Linking, Modal, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, useWindowDimensions, View,
+  ActivityIndicator, Alert, Image, Linking, Modal, Platform, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, ToastAndroid, useWindowDimensions, View,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../App';
 import { addNote, deleteNote, getBook, getMarks, listNotes, setLastPos, setNoteFavorite, setPageCount, toggleMark, updateNoteText } from '../db/db';
-import { highlightKey, selectQuote, shareText, tokenize } from '../lib/notes';
+import { highlightKey, paragraphRange, selectQuote, shareText, tapWord, tokenize, wordCount } from '../lib/notes';
 import { COVER, pageForPos, pageStarts, pagesFromLines } from '../lib/layout';
 import { searchBook, splitByMatch, type SearchHit } from '../lib/search';
 import { exportPdf, sharePageImage } from '../lib/shareBook';
@@ -27,6 +27,11 @@ const PAD_X = 28;
 const PAD_TOP = 20;
 const PAD_BOTTOM = 22;
 const BASE_FONT = 19;
+
+/** Short confirmation message (Android toast). */
+function toast(msg: string) {
+  if (Platform.OS === 'android') ToastAndroid.show(msg, ToastAndroid.SHORT);
+}
 
 function Heading({ chapter, title, c, family }: { chapter: number; title: string; c: Palette; family: string }) {
   return (
@@ -253,8 +258,10 @@ export default function ReaderScreen({ route, navigation }: Props) {
   const flipMark = async () => {
     if (!book || !pages.length) return;
     const end = page + 1 < starts.length ? starts[page + 1] : Number.MAX_SAFE_INTEGER;
+    const had = marks.some((m) => m >= starts[page] && m < end);
     await toggleMark(book.id, starts[page], end);
     setMarks(await getMarks(book.id));
+    toast(had ? 'Yer imi kaldırıldı' : '★ Yer imi eklendi');
   };
 
   const hits: SearchHit[] = useMemo(() => (book && searchOpen ? searchBook(book.chapters, query) : []), [book, searchOpen, query]);
@@ -275,8 +282,17 @@ export default function ReaderScreen({ route, navigation }: Props) {
     return t.startsWith('# ') ? t.slice(t.indexOf('\n\n') + 2) : t;
   };
 
-  const onWord = (i: number) =>
-    setSel((cur) => (!cur || cur.a !== cur.b ? { a: i, b: i } : { a: cur.a, b: i }));
+  const onWord = (i: number) => setSel((cur) => tapWord(cur, i));
+
+  const pageWords = selecting ? wordCount(bodyOfPage(page)) : 0;
+  const extend = (side: 'start' | 'end') =>
+    setSel((cur) => {
+      if (!cur) return cur;
+      const lo = Math.min(cur.a, cur.b);
+      const hi = Math.max(cur.a, cur.b);
+      return side === 'start' ? { a: Math.max(0, lo - 1), b: hi } : { a: lo, b: Math.min(pageWords - 1, hi + 1) };
+    });
+  const selectParagraph = () => setSel((cur) => (cur ? paragraphRange(bodyOfPage(page), cur.a) : cur));
 
   const picked = sel && selecting ? selectQuote(bodyOfPage(page), sel.a, sel.b) : null;
 
@@ -290,6 +306,7 @@ export default function ReaderScreen({ route, navigation }: Props) {
     setSelecting(false);
     setSel(null);
     setNoteDialog(null);
+    toast(d.id !== undefined ? 'Not güncellendi' : favorite ? '★ Favori sözlere eklendi' : 'Notlara eklendi');
   };
 
   const closeAnd = (fn: () => void) => {
@@ -324,17 +341,50 @@ export default function ReaderScreen({ route, navigation }: Props) {
       </View>
 
       <View style={s.floating}>
-        {highlight ? (
+        {selecting ? (
+          <>
+            <Pressable
+              onPress={() => extend('start')}
+              disabled={!sel}
+              style={[s.pill, s.grow, { backgroundColor: c.card, borderColor: c.border, opacity: sel ? 1 : 0.4 }]}
+              accessibilityRole="button"
+              accessibilityLabel="Başa bir kelime ekle"
+            >
+              <Text style={[s.pillText, { color: c.text }]}>◀ Başa</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => extend('end')}
+              disabled={!sel}
+              style={[s.pill, s.grow, { backgroundColor: c.card, borderColor: c.border, opacity: sel ? 1 : 0.4 }]}
+              accessibilityRole="button"
+              accessibilityLabel="Sona bir kelime ekle"
+            >
+              <Text style={[s.pillText, { color: c.text }]}>Sona ▶</Text>
+            </Pressable>
+            <Pressable
+              onPress={selectParagraph}
+              disabled={!sel}
+              style={[s.pill, s.grow, { backgroundColor: c.card, borderColor: c.border, opacity: sel ? 1 : 0.4 }]}
+              accessibilityRole="button"
+              accessibilityLabel="Paragrafın tamamını seç"
+            >
+              <Text style={[s.pillText, { color: c.text }]}>¶ Paragraf</Text>
+            </Pressable>
+          </>
+        ) : null}
+        {selecting ? null : highlight ? (
           <Pressable onPress={() => setHighlight('')} style={[s.pill, s.chip, { backgroundColor: c.mark, borderColor: c.border }]} accessibilityRole="button" accessibilityLabel="Vurguyu temizle">
             <Text numberOfLines={1} style={[s.pillText, { color: isDark ? '#fff' : '#141B34' }]}>“{highlight}” ✕</Text>
           </Pressable>
         ) : <View style={{ flex: 1 }} />}
-        <Pressable onPress={() => setLarge((v) => !v)} style={btn} accessibilityRole="button" accessibilityState={{ selected: large }}>
+        {selecting ? null : <Pressable onPress={() => setLarge((v) => !v)} style={btn} accessibilityRole="button" accessibilityState={{ selected: large }}>
           <Text style={[s.pillText, { color: c.text }]}>{large ? 'Küçült' : 'Büyüt'}</Text>
-        </Pressable>
-        <Pressable onPress={() => setSheet('menu')} style={btn} accessibilityRole="button">
-          <Text style={[s.pillText, { color: c.text }]}>Menü</Text>
-        </Pressable>
+        </Pressable>}
+        {selecting ? null : (
+          <Pressable onPress={() => setSheet('menu')} style={btn} accessibilityRole="button">
+            <Text style={[s.pillText, { color: c.text }]}>Menü</Text>
+          </Pressable>
+        )}
       </View>
 
       <View
@@ -424,8 +474,15 @@ export default function ReaderScreen({ route, navigation }: Props) {
           accessibilityLiveRegion="polite"
         >
           <Text numberOfLines={2} style={{ color: picked ? c.text : c.muted, fontSize: 14, minHeight: 38 }}>
-            {picked ? `“${picked.quote}”` : 'Söz seç: önce ilk kelimeye, sonra son kelimeye dokun.'}
+            {picked
+              ? `“${picked.quote}”`
+              : 'Bir kelimeye dokun. Sözü uzatmak için başka kelimelere dokun ya da yukarıdaki düğmeleri kullan.'}
           </Text>
+          {picked && (
+            <Text style={{ color: c.muted, fontSize: 12 }}>
+              {picked.quote.split(/\s+/).length} kelime · uzatmak için başka kelimeye dokun, yeniden başlamak için seçili kelimeye dokun
+            </Text>
+          )}
           <View style={s.selActions}>
             <Pressable onPress={() => { setSelecting(false); setSel(null); }} style={s.selBtn} accessibilityRole="button">
               <Text style={{ color: c.muted, fontWeight: '700' }}>Vazgeç</Text>
@@ -697,6 +754,7 @@ const s = StyleSheet.create({
   floating: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingTop: 12 },
   pill: { height: 44, borderRadius: 22, borderWidth: 1, paddingHorizontal: 18, justifyContent: 'center' },
   chip: { flex: 1, maxWidth: 190 },
+  grow: { flex: 1, paddingHorizontal: 8, alignItems: 'center' },
   pillText: { fontWeight: '600', fontSize: 14 },
   kicker: { fontSize: 11, letterSpacing: 1.6, fontWeight: '700' },
   head: { fontSize: 30, lineHeight: 35, fontWeight: '700', marginTop: 4 },
