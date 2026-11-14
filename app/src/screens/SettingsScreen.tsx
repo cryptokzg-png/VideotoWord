@@ -1,5 +1,6 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Constants from 'expo-constants';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FONT_FAMILIES, FONT_LABELS, FONT_SCALES, useSettings, type FontKey, type Mode } from '../settings';
 import { serif, useTheme } from '../theme';
 
@@ -35,13 +36,14 @@ function Segment<T extends string>({ value, options, onChange }: {
 
 export default function SettingsScreen() {
   const t = useTheme();
+  const insets = useSafeAreaInsets();
   const { settings, update } = useSettings();
   const version = Constants.expoConfig?.version ?? '0.1.0';
   const build = Constants.expoConfig?.android?.versionCode;
   const fontSize = 19 * FONT_SCALES[settings.fontIdx];
 
   return (
-    <ScrollView style={{ backgroundColor: t.bg }} contentContainerStyle={s.root}>
+    <ScrollView style={{ backgroundColor: t.bg }} contentContainerStyle={[s.root, { paddingBottom: 32 + insets.bottom }]}>
       <Text style={[s.label, { color: t.muted }]}>GÖRÜNÜM</Text>
       <Segment value={settings.mode} options={MODES} onChange={(mode) => update({ mode })} />
 

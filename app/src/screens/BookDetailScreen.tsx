@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Alert, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, ToastAndroid, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../App';
 import { deleteBook, getBook, setFavorite, updateChapters } from '../db/db';
@@ -15,6 +16,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'BookDetail'>;
 export default function BookDetailScreen({ route, navigation }: Props) {
   const t = useTheme();
   const isDark = useIsDark();
+  const insets = useSafeAreaInsets();
   const [book, setBook] = useState<Book | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<number | null>(null);
@@ -58,7 +60,11 @@ export default function BookDetailScreen({ route, navigation }: Props) {
   const percent = Math.round((book.lastPos / Math.max(1, book.totalChars)) * 100);
 
   return (
-    <ScrollView style={{ backgroundColor: t.bg }} contentContainerStyle={s.root}>
+    <ScrollView
+      style={{ backgroundColor: t.bg }}
+      // keep the last rows clear of the Android navigation bar so the whole list can be reached
+      contentContainerStyle={[s.root, { paddingBottom: 32 + insets.bottom }]}
+    >
       <View style={[s.cover, { backgroundColor: coverColor(book.id) }]}>
         <Text style={[s.coverTitle, { fontFamily: serif }]}>{book.title}</Text>
         <Text style={{ color: t.accent, marginTop: 8 }}>{book.author}</Text>
