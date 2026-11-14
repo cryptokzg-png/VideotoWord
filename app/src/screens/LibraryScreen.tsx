@@ -1,11 +1,11 @@
-import { useCallback, useState } from 'react';
-import { Alert, FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useCallback, useRef, useState, type ComponentRef } from 'react';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../App';
 import { deleteBook, listBooks, saveBook } from '../db/db';
 import type { BookRow } from '../types';
-import { BookCard } from '../components/BookCard';
+import { BookCard, ContinueCard } from '../components/BookCard';
 import { parseVideoId } from '../lib/youtube';
 import { buildBook } from '../lib/buildBook';
 import { sampleVideo } from '../lib/sample';
@@ -17,7 +17,7 @@ export default function LibraryScreen({ navigation }: Props) {
   const t = useTheme();
   const [books, setBooks] = useState<BookRow[]>([]);
   const [link, setLink] = useState('');
-  const [q, setQ] = useState('');
+  const input = useRef<ComponentRef<typeof TextInput>>(null);
 
   const load = useCallback(() => { listBooks().then(setBooks); }, []);
   useFocusEffect(load);
@@ -40,22 +40,27 @@ export default function LibraryScreen({ navigation }: Props) {
       { text: 'Sil', style: 'destructive', onPress: async () => { await deleteBook(b.id); load(); } },
     ]);
 
-  const shown = books.filter((b) => (b.title + b.author).toLowerCase().includes(q.toLowerCase()));
+  // most recently opened-but-unfinished book, else none
+  const reading = books.find((b) => b.lastPage > 0 && b.lastPage < b.pageCount - 1);
+  const rest = books.filter((b) => b !== reading);
 
   return (
     <View style={[s.root, { backgroundColor: t.bg }]}>
       <View style={[s.hero, { backgroundColor: t.primaryDark }]}>
-        <Text style={[s.h1, { fontFamily: serif }]}>YouTube'dan e-kitaba</Text>
+        <Text style={s.kicker}>KÜTÜPHANEM</Text>
+        <Text style={[s.h1, { fontFamily: serif }]}>Videolardan{'\n'}kitaplara</Text>
         <View style={s.row}>
           <TextInput
+            ref={input}
             value={link}
             onChangeText={setLink}
             placeholder="YouTube linkini yapıştır"
-            placeholderTextColor="#B8A9E0"
+            placeholderTextColor="#D9CFF5"
             autoCapitalize="none"
             autoCorrect={false}
             style={s.input}
             onSubmitEditing={convert}
+            accessibilityLabel="YouTube linki"
           />
           <Pressable onPress={convert} style={[s.btn, { backgroundColor: t.accent }]} accessibilityRole="button">
             <Text style={s.btnText}>Dönüştür</Text>
@@ -63,36 +68,52 @@ export default function LibraryScreen({ navigation }: Props) {
         </View>
       </View>
 
-      <FlatList
-        data={shown}
-        keyExtractor={(b) => b.id}
-        contentContainerStyle={{ padding: 16 }}
-        ListHeaderComponent={books.length > 0 ? (
-          <TextInput
-            value={q} onChangeText={setQ} placeholder="Kitaplarda ara"
-            placeholderTextColor={t.muted}
-            style={[s.search, { backgroundColor: t.surface, borderColor: t.border, color: t.text }]}
-          />
-        ) : undefined}
-        ListEmptyComponent={
+      <ScrollView contentContainerStyle={s.content}>
+        {books.length === 0 && (
           <View style={s.empty}>
             <Text style={[s.emptyTitle, { color: t.text, fontFamily: serif }]}>Henüz kitap yok</Text>
             <Text style={{ color: t.muted, textAlign: 'center' }}>
               Yukarıya bir YouTube linki yapıştır ya da YouTube'dan "Paylaş" ile bu uygulamaya gönder.
             </Text>
-            <Pressable onPress={addDemo} style={[s.demo, { borderColor: t.primary }]}>
+            <Pressable onPress={addDemo} style={[s.demo, { borderColor: t.primary }]} accessibilityRole="button">
               <Text style={{ color: t.primary, fontWeight: '700' }}>Örnek kitap ekle</Text>
             </Pressable>
           </View>
-        }
-        renderItem={({ item }) => (
-          <BookCard
-            book={item}
-            onPress={() => navigation.navigate('BookDetail', { id: item.id })}
-            onLongPress={() => confirmDelete(item)}
-          />
         )}
-      />
+
+        {reading && (
+          <>
+            <Text style={[s.label, { color: t.muted }]}>OKUMAYA DEVAM ET</Text>
+            <ContinueCard book={reading} onPress={() => navigation.navigate('Reader', { id: reading.id })} />
+          </>
+        )}
+
+        {rest.length > 0 && (
+          <>
+            <Text style={[s.label, { color: t.muted }]}>{reading ? 'SON EKLENENLER' : 'KİTAPLARIM'}</Text>
+            {rest.map((b) => (
+              <BookCard
+                key={b.id}
+                book={b}
+                onPress={() => navigation.navigate('BookDetail', { id: b.id })}
+                onLongPress={() => confirmDelete(b)}
+              />
+            ))}
+          </>
+        )}
+      </ScrollView>
+
+      <View style={[s.tabs, { backgroundColor: t.surface, borderColor: t.border }]}>
+        <Pressable style={s.tab} accessibilityRole="tab" accessibilityState={{ selected: true }}>
+          <Text style={{ color: t.primary, fontWeight: '700', fontSize: 12 }}>Kütüphane</Text>
+        </Pressable>
+        <Pressable style={s.tab} onPress={() => input.current?.focus()} accessibilityRole="tab">
+          <Text style={{ color: t.muted, fontWeight: '600', fontSize: 12 }}>Ekle</Text>
+        </Pressable>
+        <Pressable style={s.tab} onPress={() => navigation.navigate('Settings')} accessibilityRole="tab">
+          <Text style={{ color: t.muted, fontWeight: '600', fontSize: 12 }}>Ayarlar</Text>
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -100,13 +121,17 @@ export default function LibraryScreen({ navigation }: Props) {
 const s = StyleSheet.create({
   root: { flex: 1 },
   hero: { padding: 20, paddingTop: 56, gap: 12 },
-  h1: { color: '#fff', fontSize: 26, fontWeight: '800' },
+  kicker: { color: '#F5C542', fontSize: 11, letterSpacing: 1.6, fontWeight: '600' },
+  h1: { color: '#fff', fontSize: 30, lineHeight: 33, fontWeight: '700' },
   row: { flexDirection: 'row', gap: 8 },
   input: { flex: 1, backgroundColor: 'rgba(255,255,255,0.14)', color: '#fff', borderRadius: 12, paddingHorizontal: 14, height: 48 },
   btn: { borderRadius: 12, paddingHorizontal: 16, justifyContent: 'center' },
   btnText: { color: '#2A1065', fontWeight: '800' },
-  search: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, height: 44, marginBottom: 12 },
-  empty: { alignItems: 'center', gap: 10, paddingTop: 48, paddingHorizontal: 24 },
+  content: { padding: 20, gap: 10 },
+  label: { fontSize: 11, letterSpacing: 1.4, fontWeight: '600', marginTop: 6 },
+  empty: { alignItems: 'center', gap: 10, paddingTop: 32, paddingHorizontal: 24 },
   emptyTitle: { fontSize: 20, fontWeight: '700' },
   demo: { borderWidth: 1.5, borderRadius: 12, paddingVertical: 10, paddingHorizontal: 18, marginTop: 8 },
+  tabs: { flexDirection: 'row', justifyContent: 'space-around', borderTopWidth: 1, paddingBottom: 8 },
+  tab: { minWidth: 96, height: 56, alignItems: 'center', justifyContent: 'center' },
 });

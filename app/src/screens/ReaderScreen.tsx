@@ -1,49 +1,56 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Alert, FlatList, Modal, Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View,
+  Alert, FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../App';
 import { getBook, getBookmarks, setLastPage, toggleBookmark } from '../db/db';
 import type { Book } from '../types';
-import { serif, useTheme } from '../theme';
+import { serif } from '../theme';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Reader'>;
 
-function PageView({ text, n, total, title }: { text: string; n: number; total: number; title: string }) {
-  const t = useTheme();
-  const { width } = useWindowDimensions();
+// B: Gece Kütüphanesi (default); light variant is the paper look from A.
+const NIGHT = { bg: '#0E0B1F', card: '#151230', border: '#3A3366', text: '#DCD8F0', head: '#FFFFFF', muted: '#A9A3C8', accent: '#F5C542', onAccent: '#1B1204' };
+const DAY = { bg: '#F4F1EC', card: '#FFFFFF', border: '#E3DED5', text: '#1B1B2F', head: '#1B1B2F', muted: '#6B6258', accent: '#5B21B6', onAccent: '#FFFFFF' };
+type Palette = typeof NIGHT;
+
+const SCALES = [0.85, 1, 1.15, 1.3, 1.5];
+
+function Page({ text, chapter, width, c, size }: { text: string; chapter: number; width: number; c: Palette; size: number }) {
   const isHeading = text.startsWith('# ');
   const [head, ...rest] = isHeading ? text.slice(2).split('\n\n') : [null, text];
   return (
-    <View style={{ width, padding: 16 }}>
-      <View style={[s.page, { backgroundColor: t.page, borderColor: t.border }]}>
-        <Text style={[s.running, { color: t.muted }]}>{title.toUpperCase()}</Text>
-        {head ? (
-          <>
-            <Text style={[s.head, { color: t.text, fontFamily: serif }]}>{head}</Text>
-            <View style={[s.rule, { backgroundColor: t.primary }]} />
-          </>
-        ) : null}
-        <Text style={[s.body, { color: t.text }]}>{rest.join('\n\n')}</Text>
-        <Text style={[s.num, { color: t.muted }]}>{n} / {total}</Text>
-      </View>
-    </View>
+    <ScrollView style={{ width }} contentContainerStyle={s.pageContent}>
+      {head ? (
+        <>
+          <Text style={[s.kicker, { color: c.accent }]}>BÖLÜM {chapter}</Text>
+          <Text style={[s.head, { color: c.head, fontFamily: serif }]}>{head}</Text>
+        </>
+      ) : null}
+      <Text style={{ color: c.text, fontFamily: serif, fontSize: 19 * size, lineHeight: 19 * size * 1.7 }}>
+        {rest.join('\n\n')}
+      </Text>
+    </ScrollView>
   );
 }
 
 export default function ReaderScreen({ route, navigation }: Props) {
   const [book, setBook] = useState<Book | null>(null);
   const [page, setPage] = useState(0);
-  const [dark, setDark] = useState(false);
+  const [night, setNight] = useState(true);
+  const [scaleIdx, setScaleIdx] = useState(1);
+  const [large, setLarge] = useState(false);
   const [marks, setMarks] = useState<number[]>([]);
-  const [toc, setToc] = useState(false);
+  const [menu, setMenu] = useState(false);
   const [goto, setGoto] = useState(false);
   const [gotoText, setGotoText] = useState('');
-  const t = useTheme(dark ? 'dark' : 'light');
   const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const list = useRef<FlatList<string>>(null);
+  const c = night ? NIGHT : DAY;
+  const size = SCALES[scaleIdx] * (large ? 1.25 : 1);
 
   useEffect(() => {
     getBook(route.params.id).then((b) => {
@@ -61,28 +68,39 @@ export default function ReaderScreen({ route, navigation }: Props) {
     setLastPage(book.id, i);
   }, [book]);
 
-  if (!book) return <View style={[s.root, { backgroundColor: t.bg }]} />;
+  const flipMark = async () => {
+    if (!book) return;
+    await toggleBookmark(book.id, page);
+    setMarks(await getBookmarks(book.id));
+  };
+
+  if (!book) return <View style={[s.root, { backgroundColor: c.bg }]} />;
   const total = book.pages.length;
   const marked = marks.includes(page);
 
-  const chapterPages = book.pages
+  // chapter number of every page (a page starting with "# " opens a chapter)
+  const chapterOf: number[] = [];
+  let n = 0;
+  book.pages.forEach((p, i) => { if (p.startsWith('# ')) n++; chapterOf[i] = Math.max(1, n); });
+  const chapters = book.pages
     .map((p, i) => (p.startsWith('# ') ? { i, title: p.slice(2).split('\n')[0] } : null))
     .filter((x): x is { i: number; title: string } => !!x);
 
+  const btn = [s.pill, { backgroundColor: c.card, borderColor: c.border }];
+
   return (
-    <SafeAreaView style={[s.root, { backgroundColor: t.bg }]}>
-      <View style={[s.top, { borderColor: t.border }]}>
-        <Pressable onPress={() => setToc(true)}><Text style={{ color: t.text }}>İçindekiler</Text></Pressable>
-        <Text style={[s.title, { color: t.text, fontFamily: serif }]} numberOfLines={1}>{book.title}</Text>
-        <Pressable onPress={() => navigation.goBack()}><Text style={{ color: t.text }}>Kapat</Text></Pressable>
+    <View style={[s.root, { backgroundColor: c.bg }]}>
+      <View style={[s.progressTrack, { backgroundColor: c.border, marginTop: insets.top }]}>
+        <View style={[s.progressFill, { backgroundColor: c.accent, width: `${((page + 1) / total) * 100}%` }]} />
       </View>
 
-      <View style={[s.tools, { borderColor: t.border }]}>
-        <Pressable onPress={() => { setGotoText(''); setGoto(true); }}><Text style={{ color: t.text }}>Sayfaya git</Text></Pressable>
-        <Pressable onPress={async () => setMarks(await (async () => { await toggleBookmark(book.id, page); return getBookmarks(book.id); })())}>
-          <Text style={{ color: marked ? t.accent : t.text }}>{marked ? '★ Yer imi' : '☆ Yer imi'}</Text>
+      <View style={s.floating}>
+        <Pressable onPress={() => setLarge((v) => !v)} style={btn} accessibilityRole="button" accessibilityState={{ selected: large }}>
+          <Text style={[s.pillText, { color: c.text }]}>{large ? 'Küçült' : 'Büyüt'}</Text>
         </Pressable>
-        <Pressable onPress={() => setDark((d) => !d)}><Text style={{ color: t.text }}>{dark ? 'Gündüz' : 'Gece modu'}</Text></Pressable>
+        <Pressable onPress={() => setMenu(true)} style={btn} accessibilityRole="button">
+          <Text style={[s.pillText, { color: c.text }]}>Menü</Text>
+        </Pressable>
       </View>
 
       <FlatList
@@ -100,78 +118,127 @@ export default function ReaderScreen({ route, navigation }: Props) {
           setLastPage(book.id, i);
         }}
         renderItem={({ item, index }) => (
-          <PageView text={item} n={index + 1} total={total} title={book.title} />
+          <Page text={item} chapter={chapterOf[index]} width={width} c={c} size={size} />
         )}
         style={{ flex: 1 }}
       />
 
-      <View style={[s.bottom, { borderColor: t.border }]}>
-        <Pressable onPress={() => go(page - 1)} disabled={page === 0} style={[s.nav, { opacity: page === 0 ? 0.4 : 1, backgroundColor: t.surface }]}>
-          <Text style={{ color: t.text }}>‹ Önceki</Text>
-        </Pressable>
-        <Text style={{ color: t.text, fontWeight: '600' }}>{page + 1} / {total}</Text>
-        <Pressable onPress={() => go(page + 1)} disabled={page >= total - 1} style={[s.nav, { opacity: page >= total - 1 ? 0.4 : 1, backgroundColor: t.surface }]}>
-          <Text style={{ color: t.text }}>Sonraki ›</Text>
-        </Pressable>
+      <View style={[s.card, { backgroundColor: c.card, borderColor: c.border, marginBottom: Math.max(insets.bottom, 12) }]}>
+        <View style={s.cardRow}>
+          <Text style={{ color: c.muted, fontSize: 13 }}>Yazı boyutu</Text>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <Pressable
+              onPress={() => setScaleIdx((i) => Math.max(0, i - 1))}
+              style={[s.square, { borderColor: c.border }]} accessibilityRole="button" accessibilityLabel="Yazıyı küçült"
+            >
+              <Text style={{ color: c.text, fontWeight: '600' }}>A−</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setScaleIdx((i) => Math.min(SCALES.length - 1, i + 1))}
+              style={[s.square, { borderColor: c.border }]} accessibilityRole="button" accessibilityLabel="Yazıyı büyüt"
+            >
+              <Text style={{ color: c.text, fontWeight: '700', fontSize: 18 }}>A+</Text>
+            </Pressable>
+            <Pressable
+              onPress={flipMark}
+              style={[s.square, { backgroundColor: marked ? c.accent : 'transparent', borderColor: marked ? c.accent : c.border }]}
+              accessibilityRole="button" accessibilityLabel={marked ? 'Yer imini kaldır' : 'Yer imi koy'}
+            >
+              <Text style={{ color: marked ? c.onAccent : c.text, fontSize: 18 }}>{marked ? '★' : '☆'}</Text>
+            </Pressable>
+          </View>
+        </View>
+        <View style={s.cardRow}>
+          <Pressable onPress={() => go(page - 1)} disabled={page === 0} style={[s.nav, { opacity: page === 0 ? 0.4 : 1 }]} accessibilityRole="button">
+            <Text style={{ color: c.text, fontWeight: '600' }}>‹ Önceki</Text>
+          </Pressable>
+          <Text style={{ color: c.text, fontWeight: '600' }}>{page + 1} / {total}</Text>
+          <Pressable onPress={() => go(page + 1)} disabled={page >= total - 1} style={[s.nav, { opacity: page >= total - 1 ? 0.4 : 1 }]} accessibilityRole="button">
+            <Text style={{ color: c.accent, fontWeight: '700' }}>Sonraki ›</Text>
+          </Pressable>
+        </View>
       </View>
 
-      <Modal visible={toc} animationType="slide" onRequestClose={() => setToc(false)}>
-        <SafeAreaView style={[s.root, { backgroundColor: t.bg, padding: 20 }]}>
-          <Text style={[s.head, { color: t.text, fontFamily: serif }]}>İçindekiler</Text>
-          {chapterPages.map((c) => (
-            <Pressable key={c.i} onPress={() => { setToc(false); setTimeout(() => go(c.i), 50); }} style={s.tocRow}>
-              <Text style={{ color: t.text, flex: 1 }}>{c.title}</Text>
-              <Text style={{ color: t.muted }}>{c.i + 1}</Text>
+      <Modal visible={menu} animationType="slide" onRequestClose={() => setMenu(false)}>
+        <SafeAreaView style={[s.root, { backgroundColor: c.bg }]}>
+          <ScrollView contentContainerStyle={{ padding: 20, gap: 4 }}>
+            <Text style={[s.menuTitle, { color: c.head, fontFamily: serif }]} numberOfLines={2}>{book.title}</Text>
+
+            <Text style={[s.kicker, { color: c.muted, marginTop: 16 }]}>İÇİNDEKİLER</Text>
+            {chapters.map((ch, k) => (
+              <Pressable key={ch.i} onPress={() => { setMenu(false); setTimeout(() => go(ch.i), 80); }} style={s.menuRow} accessibilityRole="button">
+                <Text style={{ color: c.text, flex: 1 }}>{k + 1}. {ch.title}</Text>
+                <Text style={{ color: c.muted }}>{ch.i + 1}</Text>
+              </Pressable>
+            ))}
+
+            {marks.length > 0 && <Text style={[s.kicker, { color: c.muted, marginTop: 16 }]}>YER İMLERİ</Text>}
+            {marks.map((m) => (
+              <Pressable key={m} onPress={() => { setMenu(false); setTimeout(() => go(m), 80); }} style={s.menuRow} accessibilityRole="button">
+                <Text style={{ color: c.accent }}>★ Sayfa {m + 1}</Text>
+              </Pressable>
+            ))}
+
+            <Text style={[s.kicker, { color: c.muted, marginTop: 16 }]}>OKUMA</Text>
+            <Pressable onPress={() => { setMenu(false); setTimeout(() => { setGotoText(''); setGoto(true); }, 80); }} style={s.menuRow} accessibilityRole="button">
+              <Text style={{ color: c.text }}>Sayfaya git</Text>
             </Pressable>
-          ))}
-          {marks.length > 0 && <Text style={[s.running, { color: t.muted, marginTop: 20 }]}>YER İMLERİ</Text>}
-          {marks.map((m) => (
-            <Pressable key={m} onPress={() => { setToc(false); setTimeout(() => go(m), 50); }} style={s.tocRow}>
-              <Text style={{ color: t.accent }}>★ Sayfa {m + 1}</Text>
+            <Pressable onPress={() => setNight((v) => !v)} style={s.menuRow} accessibilityRole="button">
+              <Text style={{ color: c.text }}>{night ? 'Gündüz modu' : 'Gece modu'}</Text>
             </Pressable>
-          ))}
-          <Pressable onPress={() => setToc(false)} style={{ marginTop: 24 }}><Text style={{ color: t.primary }}>Kapat</Text></Pressable>
+            <Pressable onPress={() => { setMenu(false); navigation.goBack(); }} style={s.menuRow} accessibilityRole="button">
+              <Text style={{ color: c.text }}>Kitabı kapat</Text>
+            </Pressable>
+            <Pressable onPress={() => setMenu(false)} style={[s.menuRow, { marginTop: 12 }]} accessibilityRole="button">
+              <Text style={{ color: c.accent, fontWeight: '700' }}>Okumaya dön</Text>
+            </Pressable>
+          </ScrollView>
         </SafeAreaView>
       </Modal>
 
       <Modal visible={goto} transparent animationType="fade" onRequestClose={() => setGoto(false)}>
         <View style={s.backdrop}>
-          <View style={[s.dialog, { backgroundColor: t.surface }]}>
-            <Text style={{ color: t.text, fontWeight: '700' }}>Sayfaya git (1–{total})</Text>
+          <View style={[s.dialog, { backgroundColor: c.card }]}>
+            <Text style={{ color: c.text, fontWeight: '700' }}>Sayfaya git (1–{total})</Text>
             <TextInput
               value={gotoText} onChangeText={setGotoText} keyboardType="number-pad" autoFocus
-              style={[s.gotoInput, { color: t.text, borderColor: t.border }]}
+              style={[s.gotoInput, { color: c.text, borderColor: c.border }]}
             />
             <View style={{ flexDirection: 'row', gap: 16, justifyContent: 'flex-end' }}>
-              <Pressable onPress={() => setGoto(false)}><Text style={{ color: t.muted }}>Vazgeç</Text></Pressable>
-              <Pressable onPress={() => {
-                const n = parseInt(gotoText, 10);
-                if (!n || n < 1 || n > total) return Alert.alert('Geçersiz sayfa');
-                setGoto(false);
-                go(n - 1);
-              }}><Text style={{ color: t.primary, fontWeight: '700' }}>Git</Text></Pressable>
+              <Pressable onPress={() => setGoto(false)} accessibilityRole="button"><Text style={{ color: c.muted }}>Vazgeç</Text></Pressable>
+              <Pressable
+                onPress={() => {
+                  const num = parseInt(gotoText, 10);
+                  if (!num || num < 1 || num > total) return Alert.alert('Geçersiz sayfa');
+                  setGoto(false);
+                  go(num - 1);
+                }}
+                accessibilityRole="button"
+              ><Text style={{ color: c.accent, fontWeight: '700' }}>Git</Text></Pressable>
             </View>
           </View>
         </View>
       </Modal>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const s = StyleSheet.create({
   root: { flex: 1 },
-  top: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 14, borderBottomWidth: 1, gap: 12 },
-  title: { flex: 1, textAlign: 'center', fontSize: 17, fontWeight: '700' },
-  tools: { flexDirection: 'row', justifyContent: 'space-around', padding: 12, borderBottomWidth: 1 },
-  page: { flex: 1, borderWidth: 1, borderRadius: 4, padding: 24 },
-  running: { fontSize: 11, letterSpacing: 1.2, fontWeight: '600' },
-  head: { fontSize: 26, fontWeight: '800', marginTop: 24 },
-  rule: { height: 3, borderRadius: 2, marginVertical: 14 },
-  body: { fontSize: 17, lineHeight: 28, marginTop: 8 },
-  num: { position: 'absolute', bottom: 12, alignSelf: 'center', fontSize: 12 },
-  bottom: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 12, borderTopWidth: 1 },
-  nav: { paddingVertical: 10, paddingHorizontal: 18, borderRadius: 10 },
-  tocRow: { flexDirection: 'row', paddingVertical: 12 },
+  progressTrack: { height: 3 },
+  progressFill: { height: 3 },
+  floating: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8, paddingHorizontal: 16, paddingTop: 12 },
+  pill: { height: 44, borderRadius: 22, borderWidth: 1, paddingHorizontal: 18, justifyContent: 'center' },
+  pillText: { fontWeight: '600', fontSize: 14 },
+  pageContent: { paddingHorizontal: 28, paddingTop: 20, paddingBottom: 24, gap: 14 },
+  kicker: { fontSize: 11, letterSpacing: 1.6, fontWeight: '700' },
+  head: { fontSize: 32, lineHeight: 36 },
+  card: { marginHorizontal: 20, borderWidth: 1, borderRadius: 16, padding: 14, gap: 6 },
+  cardRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  square: { width: 44, height: 44, borderRadius: 12, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  nav: { height: 44, paddingHorizontal: 4, justifyContent: 'center' },
+  menuTitle: { fontSize: 26, lineHeight: 30 },
+  menuRow: { flexDirection: 'row', minHeight: 48, alignItems: 'center' },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 32 },
   dialog: { borderRadius: 14, padding: 20, gap: 12 },
   gotoInput: { borderWidth: 1, borderRadius: 10, padding: 10, fontSize: 18 },
