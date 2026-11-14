@@ -1,6 +1,7 @@
 import type { Book } from '../types';
 import { cleanCues, splitIntoChapters, toParagraphs } from './transcript';
 import { paginate } from './paginate';
+import { totalChars } from './layout';
 import type { VideoData } from './youtube';
 
 /** Turn fetched video data into a paginated book (no AI, rule based). */
@@ -27,5 +28,7 @@ export function buildBook(v: VideoData): Book {
     pages: paginate(chapters),
     createdAt: Date.now(),
     lastPage: 0,
+    lastPos: 0,
+    totalChars: totalChars(chapters),
   };
 }

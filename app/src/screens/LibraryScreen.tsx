@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState, type ComponentRef } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../App';
@@ -10,6 +10,7 @@ import { parseVideoId } from '../lib/youtube';
 import { buildBook } from '../lib/buildBook';
 import { sampleVideo } from '../lib/sample';
 import { serif, useTheme } from '../theme';
+import { progressOf } from '../db/db';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Library'>;
 
@@ -41,21 +42,23 @@ export default function LibraryScreen({ navigation }: Props) {
     ]);
 
   // most recently opened-but-unfinished book, else none
-  const reading = books.find((b) => b.lastPage > 0 && b.lastPage < b.pageCount - 1);
+  const reading = books.find((b) => progressOf(b) > 0 && progressOf(b) < 0.97);
   const rest = books.filter((b) => b !== reading);
 
   return (
     <View style={[s.root, { backgroundColor: t.bg }]}>
       <View style={[s.hero, { backgroundColor: t.primaryDark }]}>
-        <Text style={s.kicker}>KÜTÜPHANEM</Text>
-        <Text style={[s.h1, { fontFamily: serif }]}>Videolardan{'\n'}kitaplara</Text>
+        <View style={s.brand}>
+          <Image source={require('../../assets/logo-mark.png')} style={s.logo} accessibilityIgnoresInvertColors />
+          <Text style={s.brandName}>BARIŞ KİTAPLIK</Text>
+        </View>
         <View style={s.row}>
           <TextInput
             ref={input}
             value={link}
             onChangeText={setLink}
             placeholder="YouTube linkini yapıştır"
-            placeholderTextColor="#D9CFF5"
+            placeholderTextColor="#B9C4E8"
             autoCapitalize="none"
             autoCorrect={false}
             style={s.input}
@@ -120,13 +123,14 @@ export default function LibraryScreen({ navigation }: Props) {
 
 const s = StyleSheet.create({
   root: { flex: 1 },
-  hero: { padding: 20, paddingTop: 56, gap: 12 },
-  kicker: { color: '#F5C542', fontSize: 11, letterSpacing: 1.6, fontWeight: '600' },
-  h1: { color: '#fff', fontSize: 30, lineHeight: 33, fontWeight: '700' },
+  hero: { padding: 20, paddingTop: 56, gap: 16 },
+  brand: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  logo: { width: 54, height: 48, resizeMode: 'contain' },
+  brandName: { color: '#fff', fontSize: 20, fontWeight: '800', letterSpacing: 2 },
   row: { flexDirection: 'row', gap: 8 },
   input: { flex: 1, backgroundColor: 'rgba(255,255,255,0.14)', color: '#fff', borderRadius: 12, paddingHorizontal: 14, height: 48 },
   btn: { borderRadius: 12, paddingHorizontal: 16, justifyContent: 'center' },
-  btnText: { color: '#2A1065', fontWeight: '800' },
+  btnText: { color: '#142041', fontWeight: '800' },
   content: { padding: 20, gap: 10 },
   label: { fontSize: 11, letterSpacing: 1.4, fontWeight: '600', marginTop: 6 },
   empty: { alignItems: 'center', gap: 10, paddingTop: 32, paddingHorizontal: 24 },

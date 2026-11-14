@@ -42,3 +42,24 @@ if (!pgs.every((p) => p.length <= 800)) { console.error('FAIL page too long', Ma
 const big = paginate([{ title: 'T', text: 'kelime '.repeat(400) }]);
 if (big[0] === '# T' || !big[0].startsWith('# T\n\n')) { console.error('FAIL heading split', big[0].slice(0, 20)); process.exit(1); }
 console.log('OK4', 'paragraphs', paras.length, 'chapters', chs.length, 'pages', pgs.length);
+
+// reading position must survive re-pagination (font size / screen changes)
+import { pageStarts, pageForPos, totalChars, pageBudget } from '../src/lib/layout';
+const story = Array.from({ length: 30 }, (_, i) => ({ title: 'B' + i, text: Array.from({ length: 6 }, (_, k) => 'kelime '.repeat(40 + k * 7 + i)).join('\n\n') }));
+const total = totalChars(story);
+for (const [cpp, pen] of [[300, 80], [520, 150], [900, 250]] as const) {
+  const pg = paginate(story, cpp, pen);
+  const st = pageStarts(pg);
+  const last = pg[pg.length - 1];
+  const bodyLast = (last.startsWith('# ') ? last.slice(last.indexOf('\n\n') + 2) : last).replace(/\s/g, '').length;
+  if (st[st.length - 1] + bodyLast !== total) { console.error('FAIL total chars differ', cpp, st[st.length - 1] + bodyLast, total); process.exit(1); }
+  if (pg.some((p) => p.startsWith('# ') && !p.includes('\n\n'))) { console.error('FAIL heading-only', cpp); process.exit(1); }
+  const limit = cpp + 40;
+  if (!pg.every((p) => p.replace(/^# .*\n\n/, '').length <= limit)) { console.error('FAIL page over budget', cpp); process.exit(1); }
+  const mid = Math.floor(total / 2);
+  const idx = pageForPos(st, mid);
+  if (!(st[idx] <= mid && (idx + 1 >= st.length || st[idx + 1] > mid))) { console.error('FAIL pageForPos', cpp); process.exit(1); }
+}
+const smallFont = pageBudget(412, 640, 19), bigFont = pageBudget(412, 640, 19 * 1.5);
+if (!(bigFont.budget < smallFont.budget)) { console.error('FAIL budget should shrink with bigger font'); process.exit(1); }
+console.log('OK5 budget@19px =', smallFont.budget, "chars; @28px =", bigFont.budget);

@@ -16,26 +16,29 @@ function chunk(text: string, max: number): string[] {
 
 /**
  * Split chapters into pages by character budget. Every chapter starts on a new page;
- * the first page of a chapter begins with "# <title>" (a heading line the reader styles)
- * and always carries body text, never the heading alone.
+ * the first page of a chapter begins with "# <title>" (a heading line the reader styles),
+ * always carries body text, and gets `firstPenalty` fewer body chars to leave room for the heading.
  */
-export function paginate(chapters: Chapter[], charsPerPage = 700): string[] {
+export function paginate(chapters: Chapter[], charsPerPage = 700, firstPenalty = 0): string[] {
+  const firstLimit = Math.max(120, charsPerPage - firstPenalty);
   const pages: string[] = [];
   for (const ch of chapters) {
     let cur = `# ${ch.title}`;
-    let hasBody = false;
+    let bodyLen = 0;
+    let limit = firstLimit;
     for (const para of ch.text.split(/\n\n+/)) {
-      for (const piece of chunk(para, charsPerPage)) {
-        if (hasBody && cur.length + 2 + piece.length > charsPerPage) {
+      for (const piece of chunk(para, firstLimit)) {
+        if (bodyLen > 0 && bodyLen + 2 + piece.length > limit) {
           pages.push(cur);
           cur = '';
-          hasBody = false;
+          bodyLen = 0;
+          limit = charsPerPage;
         }
         cur += (cur ? '\n\n' : '') + piece;
-        hasBody = true;
+        bodyLen += (bodyLen ? 2 : 0) + piece.length;
       }
     }
-    if (hasBody) pages.push(cur);
+    if (bodyLen > 0) pages.push(cur);
   }
   return pages;
 }

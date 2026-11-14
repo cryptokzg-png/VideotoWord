@@ -2,6 +2,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { BookRow } from '../types';
 import { describeBook } from '../lib/sizeLabel';
 import { coverColor, serif, useTheme } from '../theme';
+import { progressOf } from '../db/db';
 
 type Props = { book: BookRow; onPress: () => void; onLongPress?: () => void };
 
@@ -28,7 +29,7 @@ export function BookCard({ book, onPress, onLongPress }: Props) {
 /** Featured "continue reading" card. */
 export function ContinueCard({ book, onPress }: { book: BookRow; onPress: () => void }) {
   const t = useTheme();
-  const progress = book.pageCount ? Math.min(1, (book.lastPage + 1) / book.pageCount) : 0;
+  const progress = progressOf(book);
   return (
     <Pressable
       onPress={onPress}
@@ -50,7 +51,7 @@ export function ContinueCard({ book, onPress }: { book: BookRow; onPress: () => 
             <View style={[s.fill, { width: `${progress * 100}%`, backgroundColor: t.accent }]} />
           </View>
           <Text style={{ color: t.muted, fontSize: 12, marginTop: 5 }}>
-            Sayfa {book.lastPage + 1} / {book.pageCount}
+            %{Math.round(progress * 100)} okundu
           </Text>
         </View>
       </View>

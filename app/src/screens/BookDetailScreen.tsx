@@ -21,13 +21,13 @@ export default function BookDetailScreen({ route, navigation }: Props) {
         <Text style={[s.coverTitle, { fontFamily: serif }]}>{book.title}</Text>
         <Text style={{ color: t.accent, marginTop: 8 }}>{book.author}</Text>
       </View>
-      <Text style={[s.size, { color: t.primary }]}>{describeBook(book.pages.length)}</Text>
+      <Text style={[s.size, { color: t.primary }]}>{describeBook(book.pageCount ?? book.pages.length)}</Text>
       <Pressable
         onPress={() => navigation.navigate('Reader', { id: book.id })}
         style={[s.read, { backgroundColor: t.primary }]}
         accessibilityRole="button"
       >
-        <Text style={s.readText}>{book.lastPage > 0 ? `Devam et (sayfa ${book.lastPage + 1})` : 'Oku'}</Text>
+        <Text style={s.readText}>{book.lastPos > 0 ? `Devam et (%${Math.round((book.lastPos / Math.max(1, book.totalChars)) * 100)})` : 'Oku'}</Text>
       </Pressable>
       <Text style={[s.h2, { color: t.text, fontFamily: serif }]}>Bölümler</Text>
       {book.chapters.map((c, i) => (
