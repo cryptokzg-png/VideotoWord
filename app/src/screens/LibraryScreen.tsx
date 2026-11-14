@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState, type ComponentRef } from 'react';
 import { Alert, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../App';
@@ -17,6 +18,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Library'>;
 
 export default function LibraryScreen({ navigation }: Props) {
   const t = useTheme();
+  const insets = useSafeAreaInsets();
   const [books, setBooks] = useState<BookRow[]>([]);
   const [link, setLink] = useState('');
   const input = useRef<ComponentRef<typeof TextInput>>(null);
@@ -36,6 +38,12 @@ export default function LibraryScreen({ navigation }: Props) {
     });
   }, []);
   useFocusEffect(load);
+
+  const pasteFromClipboard = async () => {
+    const text = (await Clipboard.getStringAsync().catch(() => ''))?.trim();
+    if (!text) return Alert.alert('Pano boş', 'Önce YouTube\'dan bir video linki kopyala.');
+    setLink(text);
+  };
 
   const convert = () => {
     const id = parseVideoId(link);
@@ -71,7 +79,7 @@ export default function LibraryScreen({ navigation }: Props) {
             ref={input}
             value={link}
             onChangeText={setLink}
-            placeholder="YouTube linkini yapıştır"
+            placeholder="YouTube linki"
             placeholderTextColor="#B9C4E8"
             autoCapitalize="none"
             autoCorrect={false}
@@ -79,8 +87,12 @@ export default function LibraryScreen({ navigation }: Props) {
             onSubmitEditing={convert}
             accessibilityLabel="YouTube linki"
           />
-          <Pressable onPress={convert} style={[s.btn, { backgroundColor: t.accent }]} accessibilityRole="button">
-            <Text style={s.btnText}>Dönüştür</Text>
+          <Pressable
+            onPress={link.trim() ? convert : pasteFromClipboard}
+            style={[s.btn, { backgroundColor: t.accent }]}
+            accessibilityRole="button"
+          >
+            <Text style={s.btnText}>{link.trim() ? 'Dönüştür' : 'Yapıştır'}</Text>
           </Pressable>
         </View>
       </View>
@@ -150,7 +162,7 @@ export default function LibraryScreen({ navigation }: Props) {
         )}
       </ScrollView>
 
-      <View style={[s.tabs, { backgroundColor: t.surface, borderColor: t.border }]}>
+      <View style={[s.tabs, { backgroundColor: t.surface, borderColor: t.border, paddingBottom: Math.max(insets.bottom, 8) }]}>
         <Pressable style={s.tab} accessibilityRole="tab" accessibilityState={{ selected: true }}>
           <Text style={{ color: t.primary, fontWeight: '700', fontSize: 12 }}>Kütüphane</Text>
         </Pressable>
@@ -182,6 +194,6 @@ const s = StyleSheet.create({
   empty: { alignItems: 'center', gap: 10, paddingTop: 32, paddingHorizontal: 24 },
   emptyTitle: { fontSize: 20, fontWeight: '700' },
   demo: { borderWidth: 1.5, borderRadius: 12, paddingVertical: 10, paddingHorizontal: 18, marginTop: 8 },
-  tabs: { flexDirection: 'row', justifyContent: 'space-around', borderTopWidth: 1, paddingBottom: 8 },
+  tabs: { flexDirection: 'row', justifyContent: 'space-around', borderTopWidth: 1 },
   tab: { minWidth: 96, height: 56, alignItems: 'center', justifyContent: 'center' },
 });
