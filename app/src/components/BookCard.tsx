@@ -27,12 +27,13 @@ export function BookCard({ book, onPress, onLongPress }: Props) {
 }
 
 /** Featured "continue reading" card. */
-export function ContinueCard({ book, onPress }: { book: BookRow; onPress: () => void }) {
+export function ContinueCard({ book, onPress, onLongPress }: { book: BookRow; onPress: () => void; onLongPress?: () => void }) {
   const t = useTheme();
   const progress = progressOf(book);
   return (
     <Pressable
       onPress={onPress}
+      onLongPress={onLongPress}
       style={[s.featured, { backgroundColor: t.surface, borderColor: t.border }]}
       accessibilityRole="button"
       accessibilityLabel={`Devam et: ${book.title}`}

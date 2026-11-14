@@ -122,7 +122,11 @@ export default function LibraryScreen({ navigation }: Props) {
         {reading && (
           <>
             <Text style={[s.label, { color: t.muted }]}>OKUMAYA DEVAM ET</Text>
-            <ContinueCard book={reading} onPress={() => navigation.navigate('Reader', { id: reading.id })} />
+            <ContinueCard
+              book={reading}
+              onPress={() => navigation.navigate('Reader', { id: reading.id })}
+              onLongPress={() => confirmDelete(reading)}
+            />
           </>
         )}
 
@@ -138,6 +142,11 @@ export default function LibraryScreen({ navigation }: Props) {
               />
             ))}
           </>
+        )}
+        {books.length > 0 && (
+          <Text style={{ color: t.muted, fontSize: 12, textAlign: 'center', marginTop: 8 }}>
+            Bir kitabı silmek için üzerine uzun bas ya da kitabı açıp "Kitabı sil"e dokun.
+          </Text>
         )}
       </ScrollView>
 
