@@ -977,3 +977,5 @@ const s = StyleSheet.create({
   dialog: { borderRadius: 14, padding: 20, gap: 12 },
   gotoInput: { borderWidth: 1, borderRadius: 10, padding: 10, fontSize: 18 },
 });
+
+// Final reader UI: summary panel intentionally removed for a cleaner reading layout.
