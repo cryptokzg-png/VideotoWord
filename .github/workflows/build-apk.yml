@@ -2,6 +2,11 @@ name: Build Android APK
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - ccr-f9c9dcff-hmdglg
+    paths:
+      - app/scripts/logic.test.mts
 
 concurrency:
   group: build-apk-${{ github.ref }}
