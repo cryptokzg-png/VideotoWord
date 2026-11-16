@@ -27,9 +27,9 @@ function makeSpeechSentences(pages: string[]): SpeechSentence[] {
   const out: SpeechSentence[] = [];
   pages.forEach((pageText, page) => {
     if (page === 0) return;
-    const sep = pageText.startsWith('# ') ? pageText.indexOf('\\n\\n') : -1;
+    const sep = pageText.startsWith('# ') ? pageText.indexOf('\n\n') : -1;
     const body = sep >= 0 ? pageText.slice(sep + 2) : pageText;
-    const re = /[^.!?…]+(?:[.!?…]+[\"'”’»)}\\]]*)?|[.!?…]+/gu;
+    const re = /[^.!?…]+(?:[.!?…]+["'”’»)}]*)?|[.!?…]+/gu;
     for (const match of body.matchAll(re)) {
       const raw=match[0], leading=raw.length-raw.trimStart().length, trimmed=raw.trim();
       if(!trimmed) continue;
