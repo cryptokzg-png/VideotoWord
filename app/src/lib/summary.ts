@@ -1,5 +1,3 @@
-import type { Chapter } from '../types';
-
 const STOP = new Set(['ve','veya','ile','ama','fakat','ancak','çünkü','de','da','ki','bu','şu','o','bir','çok','daha','en','için','gibi','olarak','olan','oldu','ise','ben','sen','biz','siz','onlar','benim','senin','bizim','sizin','onun','her','hem','ne','mi','mı','mu','mü','diye','kadar','sonra','önce','var','yok','şey']);
 
 /** Offline extractive summary: ranks source sentences by informative word frequency. */
