@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState, type ComponentRef } from 'react';
-import { Alert, Image, Modal, Platform, Pressable, Share, ToastAndroid, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Image, Platform, Pressable, Share, ToastAndroid, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../App';
-import { deleteBook, getBook, listBooks, listBookTexts, listFavoriteQuotes, saveBook, setFavorite, setNoteFavorite } from '../db/db';
+import { deleteBook, listBooks, listBookTexts, listFavoriteQuotes, saveBook, setFavorite, setNoteFavorite } from '../db/db';
 import type { BookRow, Note } from '../types';
 import { highlightKey, shareText } from '../lib/notes';
 import { BookCard, ContinueCard } from '../components/BookCard';
@@ -16,7 +16,6 @@ import { buildBook } from '../lib/buildBook';
 import { sampleVideo } from '../lib/sample';
 import { serif, useTheme } from '../theme';
 import { progressOf } from '../db/db';
-import { summarizeChapter } from '../lib/summary';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Library'>;
 
@@ -48,7 +47,6 @@ export default function LibraryScreen({ navigation }: Props) {
   const [tookMs, setTookMs] = useState(0);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [clip, setClip] = useState<string | null>(null); // video id found on the clipboard
-  const [summaryBook, setSummaryBook] = useState<{ title: string; chapters: { title: string; summary: string }[] } | null>(null);
   const dismissed = useRef<Set<string>>(new Set());
 
   const load = useCallback(() => {
@@ -83,14 +81,6 @@ export default function LibraryScreen({ navigation }: Props) {
   const addDemo = async () => {
     await saveBook(buildBook(sampleVideo()));
     load();
-  };
-
-  const openBookSummary = async (b: BookRow) => {
-    try {
-      const full = await getBook(b.id);
-      if (!full) { Alert.alert('Özet açılamadı', 'Kitap bulunamadı.'); return; }
-      setSummaryBook({ title: full.title, chapters: full.chapters.map((chapter) => ({ title: chapter.title, summary: summarizeChapter(chapter.text) })) });
-    } catch { Alert.alert('Özet açılamadı', 'Kitap özeti hazırlanırken bir hata oluştu.'); }
   };
 
   const confirmDelete = (b: BookRow) =>
@@ -323,7 +313,6 @@ export default function LibraryScreen({ navigation }: Props) {
                 onPress={() => navigation.navigate('BookDetail', { id: b.id })}
                 onLongPress={() => confirmDelete(b)}
                 onToggleFavorite={() => toggleFav(b)}
-                onSummary={() => openBookSummary(b)}
               />
             ))}
             {contentQuery && (
@@ -395,7 +384,6 @@ export default function LibraryScreen({ navigation }: Props) {
                   onPress={() => navigation.navigate('Reader', { id: reading.id })}
                   onLongPress={() => confirmDelete(reading)}
                   onToggleFavorite={() => toggleFav(reading)}
-                  onSummary={() => openBookSummary(reading)}
                 />
               </>
             )}
@@ -409,8 +397,7 @@ export default function LibraryScreen({ navigation }: Props) {
                     onPress={() => navigation.navigate('BookDetail', { id: b.id })}
                     onLongPress={() => confirmDelete(b)}
                     onToggleFavorite={() => toggleFav(b)}
-                    onSummary={() => openBookSummary(b)}
-                  />
+                      />
                 ))}
               </>
             )}
@@ -437,19 +424,6 @@ export default function LibraryScreen({ navigation }: Props) {
           </Text>
         )}
       </ScrollView>
-
-      <Modal visible={!!summaryBook} transparent animationType="slide" onRequestClose={() => setSummaryBook(null)}>
-        <View style={s.summaryBackdrop}><View style={[s.summaryPanel,{backgroundColor:t.surface,borderColor:t.border}]}>
-          <View style={s.summaryHeader}><View style={{flex:1}}><Text style={{color:t.primary,fontWeight:'800',fontSize:11,letterSpacing:1}}>KİTAP ÖZETLERİ</Text><Text style={{color:t.text,fontFamily:serif,fontWeight:'800',fontSize:19}} numberOfLines={2}>{summaryBook?.title ?? ''}</Text></View>
-            <Pressable onPress={() => setSummaryBook(null)} style={s.summaryClose}><Text style={{color:t.primary,fontWeight:'800'}}>Kapat</Text></Pressable></View>
-          <ScrollView contentContainerStyle={{gap:14,paddingBottom:16}}>
-            {summaryBook?.chapters.map((chapter,index) => <View key={index} style={[s.summaryChapter,{borderColor:t.border}]}>
-              <Text style={{color:t.primary,fontWeight:'800',fontSize:12}}>BÖLÜM {index+1}</Text><Text style={{color:t.text,fontFamily:serif,fontWeight:'800',fontSize:17}}>{chapter.title}</Text><Text style={{color:t.text,lineHeight:22}}>{chapter.summary}</Text>
-            </View>)}
-            <Text style={{color:t.muted,fontSize:11}}>Özetler çevrimdışı hazırlanır; bölümdeki önemli cümleler seçilir, yeni bilgi eklenmez.</Text>
-          </ScrollView>
-        </View></View>
-      </Modal>
 
       <View style={[s.tabs, { backgroundColor: t.surface, borderColor: t.border, paddingBottom: Math.max(insets.bottom, 8) }]}>
         <Pressable style={s.tab} accessibilityRole="tab" accessibilityState={{ selected: true }}>
@@ -490,11 +464,6 @@ const s = StyleSheet.create({
   statCard: { flex:1,borderWidth:1,borderRadius:12,paddingVertical:8,alignItems:'center' },
   statValue: { fontSize:20,fontWeight:'800' },
   statLabel: { fontSize:11,fontWeight:'600' },
-  summaryBackdrop: { flex:1,backgroundColor:'rgba(0,0,0,0.55)',justifyContent:'flex-end' },
-  summaryPanel: { maxHeight:'88%',borderTopLeftRadius:22,borderTopRightRadius:22,borderWidth:1,padding:18,gap:14 },
-  summaryHeader: { flexDirection:'row',alignItems:'center',gap:12 },
-  summaryClose: { minHeight:42,justifyContent:'center',paddingHorizontal:8 },
-  summaryChapter: { borderBottomWidth:1,paddingBottom:12,gap:6 },
   label: { fontSize: 11, letterSpacing: 1.4, fontWeight: '600', marginTop: 6 },
   quoteCard: { flexDirection: 'row', gap: 12, borderWidth: 1, borderRadius: 16, padding: 14 },
   quoteBar: { width: 4, borderRadius: 2 },
