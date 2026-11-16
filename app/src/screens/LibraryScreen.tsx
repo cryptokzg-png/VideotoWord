@@ -5,7 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../App';
-import { deleteBook, listBooks, listBookTexts, listFavoriteQuotes, saveBook, setFavorite, setNoteFavorite } from '../db/db';
+import { deleteBook, getBook, listBooks, listBookTexts, listFavoriteQuotes, saveBook, setFavorite, setNoteFavorite } from '../db/db';
 import type { BookRow, Note } from '../types';
 import { highlightKey, shareText } from '../lib/notes';
 import { BookCard, ContinueCard } from '../components/BookCard';
@@ -16,6 +16,7 @@ import { buildBook } from '../lib/buildBook';
 import { sampleVideo } from '../lib/sample';
 import { serif, useTheme } from '../theme';
 import { progressOf } from '../db/db';
+import { summarizeChapter } from '../lib/summary';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Library'>;
 
@@ -47,6 +48,7 @@ export default function LibraryScreen({ navigation }: Props) {
   const [tookMs, setTookMs] = useState(0);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [clip, setClip] = useState<string | null>(null); // video id found on the clipboard
+  const [summaryBook, setSummaryBook] = useState<{ title: string; chapters: { title: string; summary: string }[] } | null>(null);
   const dismissed = useRef<Set<string>>(new Set());
 
   const load = useCallback(() => {
@@ -81,6 +83,14 @@ export default function LibraryScreen({ navigation }: Props) {
   const addDemo = async () => {
     await saveBook(buildBook(sampleVideo()));
     load();
+  };
+
+  const openBookSummary = async (b: BookRow) => {
+    try {
+      const full = await getBook(b.id);
+      if (!full) { Alert.alert('Özet açılamadı', 'Kitap bulunamadı.'); return; }
+      setSummaryBook({ title: full.title, chapters: full.chapters.map((chapter) => ({ title: chapter.title, summary: summarizeChapter(chapter.text) })) });
+    } catch { Alert.alert('Özet açılamadı', 'Kitap özeti hazırlanırken bir hata oluştu.'); }
   };
 
   const confirmDelete = (b: BookRow) =>
@@ -213,6 +223,11 @@ export default function LibraryScreen({ navigation }: Props) {
 
         {books.length > 0 && (
           <>
+            <View style={s.statsRow}>
+              <View style={[s.statCard,{backgroundColor:t.surface,borderColor:t.border}]}><Text style={[s.statValue,{color:t.text}]}>{books.length}</Text><Text style={[s.statLabel,{color:t.muted}]}>Kitap</Text></View>
+              <View style={[s.statCard,{backgroundColor:t.surface,borderColor:t.border}]}><Text style={[s.statValue,{color:t.text}]}>{favCount}</Text><Text style={[s.statLabel,{color:t.muted}]}>Favori</Text></View>
+              <View style={[s.statCard,{backgroundColor:t.surface,borderColor:t.border}]}><Text style={[s.statValue,{color:t.text}]}>{quotes.length}</Text><Text style={[s.statLabel,{color:t.muted}]}>Alıntı</Text></View>
+            </View>
             <TextInput
               ref={searchInput}
               value={q}
@@ -423,6 +438,19 @@ export default function LibraryScreen({ navigation }: Props) {
         )}
       </ScrollView>
 
+      <Modal visible={!!summaryBook} transparent animationType="slide" onRequestClose={() => setSummaryBook(null)}>
+        <View style={s.summaryBackdrop}><View style={[s.summaryPanel,{backgroundColor:t.surface,borderColor:t.border}]}>
+          <View style={s.summaryHeader}><View style={{flex:1}}><Text style={{color:t.primary,fontWeight:'800',fontSize:11,letterSpacing:1}}>KİTAP ÖZETLERİ</Text><Text style={{color:t.text,fontFamily:serif,fontWeight:'800',fontSize:19}} numberOfLines={2}>{summaryBook?.title ?? ''}</Text></View>
+            <Pressable onPress={() => setSummaryBook(null)} style={s.summaryClose}><Text style={{color:t.primary,fontWeight:'800'}}>Kapat</Text></Pressable></View>
+          <ScrollView contentContainerStyle={{gap:14,paddingBottom:16}}>
+            {summaryBook?.chapters.map((chapter,index) => <View key={index} style={[s.summaryChapter,{borderColor:t.border}]}>
+              <Text style={{color:t.primary,fontWeight:'800',fontSize:12}}>BÖLÜM {index+1}</Text><Text style={{color:t.text,fontFamily:serif,fontWeight:'800',fontSize:17}}>{chapter.title}</Text><Text style={{color:t.text,lineHeight:22}}>{chapter.summary}</Text>
+            </View>)}
+            <Text style={{color:t.muted,fontSize:11}}>Özetler çevrimdışı hazırlanır; bölümdeki önemli cümleler seçilir, yeni bilgi eklenmez.</Text>
+          </ScrollView>
+        </View></View>
+      </Modal>
+
       <View style={[s.tabs, { backgroundColor: t.surface, borderColor: t.border, paddingBottom: Math.max(insets.bottom, 8) }]}>
         <Pressable style={s.tab} accessibilityRole="tab" accessibilityState={{ selected: true }}>
           <Text style={{ color: t.primary, fontWeight: '700', fontSize: 12 }}>Kütüphane</Text>
@@ -447,7 +475,7 @@ export default function LibraryScreen({ navigation }: Props) {
 
 const s = StyleSheet.create({
   root: { flex: 1 },
-  hero: { padding: 20, paddingTop: 56, gap: 16 },
+  hero: { padding: 20, paddingTop: 42, gap: 14 },
   brand: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   logo: { width: 54, height: 48, resizeMode: 'contain' },
   brandName: { color: '#fff', fontSize: 20, fontWeight: '800', letterSpacing: 2 },
@@ -458,6 +486,15 @@ const s = StyleSheet.create({
   banner: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 20, marginTop: 14, padding: 12, borderRadius: 14, borderWidth: 1.5 },
   bannerBtn: { minHeight: 44, minWidth: 56, paddingHorizontal: 10, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   content: { padding: 20, gap: 10 },
+  statsRow: { flexDirection:'row',gap:8,marginBottom:4 },
+  statCard: { flex:1,borderWidth:1,borderRadius:12,paddingVertical:8,alignItems:'center' },
+  statValue: { fontSize:20,fontWeight:'800' },
+  statLabel: { fontSize:11,fontWeight:'600' },
+  summaryBackdrop: { flex:1,backgroundColor:'rgba(0,0,0,0.55)',justifyContent:'flex-end' },
+  summaryPanel: { maxHeight:'88%',borderTopLeftRadius:22,borderTopRightRadius:22,borderWidth:1,padding:18,gap:14 },
+  summaryHeader: { flexDirection:'row',alignItems:'center',gap:12 },
+  summaryClose: { minHeight:42,justifyContent:'center',paddingHorizontal:8 },
+  summaryChapter: { borderBottomWidth:1,paddingBottom:12,gap:6 },
   label: { fontSize: 11, letterSpacing: 1.4, fontWeight: '600', marginTop: 6 },
   quoteCard: { flexDirection: 'row', gap: 12, borderWidth: 1, borderRadius: 16, padding: 14 },
   quoteBar: { width: 4, borderRadius: 2 },
