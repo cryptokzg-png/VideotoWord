@@ -6,6 +6,8 @@ import { buildBook } from '../src/lib/buildBook';
 import { sampleVideo } from '../src/lib/sample';
 const eq=(a:any,b:any,m:string)=>{ if(JSON.stringify(a)!==JSON.stringify(b)){console.error('FAIL',m,a,b);process.exit(1)} };
 eq(cleanCues([{start:0,dur:1,text:'[Müzik]'},{start:1,dur:1,text:'Merhaba &amp; hoş'},{start:2,dur:1,text:'Merhaba & hoş'}]).length,1,'clean+dedupe');
+eq(toParagraphs([{start:0,dur:1,text:'merhaba'},{start:2,dur:1,text:'nasılsın'}]), ['Merhaba. Nasılsın?'], 'pause-aware punctuation and Turkish capitalization');
+eq(toParagraphs([{start:0,dur:1,text:'bugün hava çok güzel'}]), ['Bugün hava çok güzel.'], 'period at end of transcript');
 eq(parseVideoId('https://youtu.be/dQw4w9WgXcQ?si=x'),'dQw4w9WgXcQ','short');
 eq(parseVideoId('https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=3'),'dQw4w9WgXcQ','watch');
 eq(parseVideoId('https://youtube.com/shorts/dQw4w9WgXcQ'),'dQw4w9WgXcQ','shorts');
