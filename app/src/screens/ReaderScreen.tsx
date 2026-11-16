@@ -362,17 +362,8 @@ export default function ReaderScreen({ route, navigation }: Props) {
   };
   const cancelSleepTimer = () => { setSleepTimerEndsAt(null); setSleepTimerMinutes(null); };
 
-  const openSummary = () => {
-    if (!book || currentChapter < 1) { Alert.alert('Bölüm özeti', 'Özetlemek için önce bir bölüm aç.'); return; }
-    const chapter = book.chapters[currentChapter - 1];
-    if (!chapter) return;
-    setSummaryTitle(chapter.title);
-    setSummaryText(summarizeChapter(chapter.text));
-    setSummaryOpen(true);
-  };
-
   const lookupWord = async () => {
-    const word = dictionaryWord.trim().replace(/^[^\\p{L}]+|[^\\p{L}]+$/gu, '');
+    const word = dictionaryWord.trim().replace(/^[^\p{L}]+|[^\p{L}]+$/gu, '');
     if (!word) { setDictionaryResult('Lütfen bir kelime yaz.'); return; }
     setDictionaryLoading(true);
     setDictionaryResult('');
@@ -447,6 +438,15 @@ export default function ReaderScreen({ route, navigation }: Props) {
     .map((p, i) => (p.startsWith('# ') ? { i, title: p.slice(2, p.indexOf('\n\n')) } : null))
     .filter((x): x is { i: number; title: string } => !!x);
   const currentChapter = page === 0 ? 0 : chapterOf[page] ?? 0;
+
+  const openSummary = () => {
+    if (!book || currentChapter < 1) { Alert.alert('Bölüm özeti', 'Özetlemek için önce bir bölüm aç.'); return; }
+    const chapter = book.chapters[currentChapter - 1];
+    if (!chapter) return;
+    setSummaryTitle(chapter.title);
+    setSummaryText(summarizeChapter(chapter.text));
+    setSummaryOpen(true);
+  };
 
   const progress = pages.length ? Math.min(1, (starts[page] ?? 0) / Math.max(1, book.totalChars)) : 0;
   const btn = [s.pill, { backgroundColor: c.card, borderColor: c.border }];
