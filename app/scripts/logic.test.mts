@@ -213,3 +213,4 @@ eq(parseSettings({ speechRate: '0.2' }).speechRate, 0.7, 'speech rate lower boun
 eq(parseSettings({ speechVoice: 'tr.voice.id' }).speechVoice, 'tr.voice.id', 'speech voice restored');
 console.log('OK6');
 
+
