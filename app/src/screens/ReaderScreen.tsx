@@ -213,8 +213,6 @@ export default function ReaderScreen({ route, navigation }: Props) {
   const [speechOpen,setSpeechOpen]=useState(false);
   const [speechStatus,setSpeechStatus]=useState<'idle'|'playing'|'paused'>('idle');
   const [speechAt,setSpeechAt]=useState(-1);
-  const [speechVoices,setSpeechVoices]=useState<Awaited<ReturnType<typeof Speech.getAvailableVoicesAsync>>>([]);
-  const [speechVoicesLoading,setSpeechVoicesLoading]=useState(false);
 
   const fontSize = BASE_FONT * FONT_SCALES[settings.fontIdx] * (large ? 1.25 : 1);
   const spec: TextStyleSpec = useMemo(
@@ -321,42 +319,14 @@ export default function ReaderScreen({ route, navigation }: Props) {
   };
 
   const speechSentences = useMemo(() => makeSpeechSentences(pages), [pages]);
-  const turkishVoices = speechVoices.filter((voice) => /^tr(?:-|$)/i.test(voice.language));
-  const selectedSpeechVoice = turkishVoices.find((voice) => voice.identifier === settings.speechVoice) ?? turkishVoices[0];
-  useEffect(() => {
-    if (!speechOpen || speechVoices.length > 0 || speechVoicesLoading) return;
-    setSpeechVoicesLoading(true);
-    Speech.getAvailableVoicesAsync()
-      .then((voices) => setSpeechVoices(voices))
-      .catch((error) => Alert.alert('Sesler alınamadı', String(error?.message ?? error)))
-      .finally(() => setSpeechVoicesLoading(false));
-  }, [speechOpen, speechVoices.length, speechVoicesLoading]);
-  useEffect(() => {
-    if (turkishVoices.length > 0 && !turkishVoices.some((voice) => voice.identifier === settings.speechVoice)) {
-      update({ speechVoice: turkishVoices[0].identifier });
-    }
-  }, [turkishVoices, settings.speechVoice, update]);
   const speakFrom = async (index: number) => {
     if(index<0||index>=speechSentences.length)return;
     const token=++speechToken.current; speechIndex.current=index; setSpeechAt(index); setSpeechStatus('playing');
     const sentence=speechSentences[index]; if(pageRef.current!==sentence.page)jump(sentence.page);
     try {
-      let voiceId = settings.speechVoice;
-      if (!voiceId) {
-        const voices = await Speech.getAvailableVoicesAsync();
-        const firstTurkishVoice = voices.find((voice) => /^tr(?:-|$)/i.test(voice.language));
-        if (!firstTurkishVoice) {
-          setSpeechStatus('idle');
-          Alert.alert('Türkçe ses bulunamadı','Telefonunda Ayarlar > Metin okuma / Metin-konuşma çıkışı bölümünden Türkçe sesi indirip tekrar dene.');
-          return;
-        }
-        voiceId = firstTurkishVoice.identifier;
-        update({ speechVoice: voiceId });
-        setSpeechVoices(voices);
-      }
       if(token!==speechToken.current)return;
       Speech.stop(); // replace any currently playing sentence when the user skips or resumes
-      Speech.speak(sentence.text,{language:'tr-TR',voice:voiceId,rate:settings.speechRate,onDone:()=>{if(token!==speechToken.current)return;const next=index+1;if(next<speechSentences.length)void speakFrom(next);else{setSpeechStatus('idle');setSpeechAt(-1);}},onError:(e)=>{if(token!==speechToken.current)return;setSpeechStatus('idle');Alert.alert('Sesli okuma durdu',e.message||'Metin okunamadı.');}});
+      Speech.speak(sentence.text,{language:'tr-TR',rate:settings.speechRate,onDone:()=>{if(token!==speechToken.current)return;const next=index+1;if(next<speechSentences.length)void speakFrom(next);else{setSpeechStatus('idle');setSpeechAt(-1);}},onError:(e)=>{if(token!==speechToken.current)return;setSpeechStatus('idle');Alert.alert('Sesli okuma durdu',e.message||'Metin okunamadı.');}});
     }catch(e:any){if(token!==speechToken.current)return;setSpeechStatus('idle');Alert.alert('Sesli okuma başlatılamadı',String(e?.message??e));}
   };
   const pauseSpeech=()=>{if(speechStatus!=='playing')return;speechToken.current+=1;Speech.stop();setSpeechStatus('paused');};
@@ -652,33 +622,7 @@ export default function ReaderScreen({ route, navigation }: Props) {
           <Pressable onPress={()=>skipSpeech(1)} disabled={!speechSentences.length} style={[s.pill,{backgroundColor:c.card,borderColor:c.border,opacity:speechSentences.length?1:0.4}]}><Text style={{color:c.text}}>Cümle ›</Text></Pressable>
           <Pressable onPress={stopSpeech} style={[s.pill,{backgroundColor:c.card,borderColor:c.border}]}><Text style={{color:c.text}}>Durdur</Text></Pressable>
         </View>
-        <Text style={{color:c.text,fontWeight:'700',paddingTop:12,paddingBottom:4}}>Ses seçimi</Text>
-        {speechVoicesLoading ? (
-          <Text style={{color:c.muted,paddingVertical:8}}>Telefondaki sesler yükleniyor…</Text>
-        ) : turkishVoices.length === 0 ? (
-          <Text style={{color:c.muted,paddingVertical:8}}>Telefonda yüklü Türkçe ses bulunamadı. Android metin-konuşma ayarlarından Türkçe ses yükleyebilirsin.</Text>
-        ) : (
-          <View style={{gap:6,paddingVertical:6}}>
-            {turkishVoices.map((voice) => {
-              const selected = selectedSpeechVoice?.identifier === voice.identifier;
-              return (
-                <Pressable
-                  key={voice.identifier}
-                  onPress={() => {
-                    if (speechStatus === 'playing' || speechStatus === 'paused') stopSpeech();
-                    update({ speechVoice: voice.identifier });
-                  }}
-                  style={{padding:12,borderRadius:12,borderWidth:1,borderColor:selected?c.accent:c.border,backgroundColor:selected?c.accent+'18':c.card}}
-                  accessibilityRole="button"
-                  accessibilityState={{selected}}
-                >
-                  <Text style={{color:selected?c.accent:c.text,fontWeight:selected?'800':'500'}}>{voice.name || voice.identifier}</Text>
-                  <Text style={{color:c.muted,fontSize:11,marginTop:2}}>{voice.language}{selected?' · Seçili':''}</Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        )}
+        <Text style={{color:c.muted,fontSize:12,paddingTop:12}}>Ses, telefonun varsayılan Türkçe metin okuma motorundan alınır.</Text>
         <View style={{flexDirection:'row',alignItems:'center',justifyContent:'space-between',paddingVertical:8}}>
           <Text style={{color:c.text}}>Okuma hızı</Text><View style={{flexDirection:'row',alignItems:'center',gap:12}}>
             <Pressable onPress={()=>update({speechRate:Math.max(0.7,Math.round((settings.speechRate-0.1)*10)/10)})} style={s.square}><Text style={{color:c.text}}>−</Text></Pressable>
