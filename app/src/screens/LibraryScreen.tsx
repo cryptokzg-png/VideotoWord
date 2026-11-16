@@ -308,6 +308,7 @@ export default function LibraryScreen({ navigation }: Props) {
                 onPress={() => navigation.navigate('BookDetail', { id: b.id })}
                 onLongPress={() => confirmDelete(b)}
                 onToggleFavorite={() => toggleFav(b)}
+                onSummary={() => openBookSummary(b)}
               />
             ))}
             {contentQuery && (
@@ -379,6 +380,7 @@ export default function LibraryScreen({ navigation }: Props) {
                   onPress={() => navigation.navigate('Reader', { id: reading.id })}
                   onLongPress={() => confirmDelete(reading)}
                   onToggleFavorite={() => toggleFav(reading)}
+                  onSummary={() => openBookSummary(reading)}
                 />
               </>
             )}
