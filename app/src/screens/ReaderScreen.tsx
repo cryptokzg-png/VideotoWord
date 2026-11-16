@@ -328,6 +328,7 @@ export default function ReaderScreen({ route, navigation }: Props) {
       if(!speechVoice.current){const voices=await Speech.getAvailableVoicesAsync();const tr=voices.find(v=>/^tr(?:-|$)/i.test(v.language));
         if(!tr){setSpeechStatus('idle');Alert.alert('Türkçe ses bulunamadı','Telefonunda Ayarlar > Metin okuma / Metin-konuşma çıkışı bölümünden Türkçe sesi indirip tekrar dene.');return;} speechVoice.current=tr.identifier;}
       if(token!==speechToken.current)return;
+      Speech.stop(); // replace any currently playing sentence when the user skips or resumes
       Speech.speak(sentence.text,{language:'tr-TR',voice:speechVoice.current,rate:speechRate,onDone:()=>{if(token!==speechToken.current)return;const next=index+1;if(next<speechSentences.length)void speakFrom(next);else{setSpeechStatus('idle');setSpeechAt(-1);}},onError:(e)=>{if(token!==speechToken.current)return;setSpeechStatus('idle');Alert.alert('Sesli okuma durdu',e.message||'Metin okunamadı.');}});
     }catch(e:any){if(token!==speechToken.current)return;setSpeechStatus('idle');Alert.alert('Sesli okuma başlatılamadı',String(e?.message??e));}
   };
