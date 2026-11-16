@@ -4,7 +4,7 @@ import { describeBook } from '../lib/sizeLabel';
 import { coverColor, serif, useTheme } from '../theme';
 import { progressOf } from '../db/db';
 
-type Props = { book: BookRow; onPress: () => void; onLongPress?: () => void; onToggleFavorite?: () => void; onSummary?: () => void };
+type Props = { book: BookRow; onPress: () => void; onLongPress?: () => void; onToggleFavorite?: () => void; };
 
 function Star({ on, onPress, title }: { on: boolean; onPress: () => void; title: string }) {
   const t = useTheme();
@@ -23,7 +23,7 @@ function Star({ on, onPress, title }: { on: boolean; onPress: () => void; title:
 }
 
 /** Compact list row (A: Kâğıt ve Mürekkep). */
-export function BookCard({ book, onPress, onLongPress, onToggleFavorite, onSummary }: Props) {
+export function BookCard({ book, onPress, onLongPress, onToggleFavorite }: Props) {
   const t = useTheme();
   return (
     <View style={[s.compactCard,{backgroundColor:t.surface,borderColor:t.border}]}>
@@ -35,16 +35,12 @@ export function BookCard({ book, onPress, onLongPress, onToggleFavorite, onSumma
         </View>
         {onToggleFavorite && <Star on={!!book.favorite} onPress={onToggleFavorite} title={book.title} />}
       </Pressable>
-      {onSummary && <View style={s.compactActions}>
-        <Pressable onPress={onSummary} style={[s.actionButton,{backgroundColor:t.bg,borderColor:t.border}]} accessibilityRole="button"><Text style={{color:t.primary,fontWeight:'700',fontSize:12}}>Özeti gör</Text></Pressable>
-        <Pressable onPress={onPress} style={[s.actionButton,{backgroundColor:t.bg,borderColor:t.border}]} accessibilityRole="button"><Text style={{color:t.primary,fontWeight:'700',fontSize:12}}>Kitabı aç</Text></Pressable>
-      </View>}
     </View>
   );
 }
 
 /** Featured "continue reading" card. */
-export function ContinueCard({ book, onPress, onLongPress, onToggleFavorite, onSummary }: Props) {
+export function ContinueCard({ book, onPress, onLongPress, onToggleFavorite }: Props) {
   const t = useTheme();
   const progress = progressOf(book);
   return (
@@ -64,10 +60,6 @@ export function ContinueCard({ book, onPress, onLongPress, onToggleFavorite, onS
           </View>
         </View>
       </Pressable>
-      {onSummary && <View style={s.featuredActions}>
-        <Pressable onPress={onSummary} style={[s.actionButton,{backgroundColor:t.bg,borderColor:t.border}]} accessibilityRole="button"><Text style={{color:t.primary,fontWeight:'700'}}>Özeti gör</Text></Pressable>
-        <Pressable onPress={onPress} style={[s.actionButton,{backgroundColor:t.bg,borderColor:t.border}]} accessibilityRole="button"><Text style={{color:t.primary,fontWeight:'700'}}>Kitabı aç</Text></Pressable>
-      </View>}
     </View>
   );
 }
@@ -75,14 +67,11 @@ export function ContinueCard({ book, onPress, onLongPress, onToggleFavorite, onS
 const s = StyleSheet.create({
   compactCard: { borderRadius:14,borderWidth:1,overflow:'hidden' },
   row: { flexDirection: 'row', gap: 12, alignItems: 'center', padding: 10 },
-  compactActions: { flexDirection:'row',gap:8,paddingHorizontal:10,paddingBottom:10 },
-  actionButton: { flex:1,minHeight:36,borderRadius:10,borderWidth:1,alignItems:'center',justifyContent:'center',paddingHorizontal:8 },
   miniCover: { width: 44, height: 58, borderRadius: 4 },
   star: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', marginRight: -6, marginTop: -4 },
   rowTitle: { fontSize: 16, fontWeight: '700' },
   featuredWrap: { borderRadius:16,borderWidth:1,overflow:'hidden' },
   featured: { flexDirection: 'row', gap: 14, padding: 12 },
-  featuredActions: { flexDirection:'row',gap:8,paddingHorizontal:12,paddingBottom:12 },
   cover: { width: 78, height: 104, borderRadius: 6, padding: 8, justifyContent: 'flex-end' },
   coverTitle: { color: '#fff', fontSize: 12, fontWeight: '700' },
   info: { flex: 1, justifyContent: 'space-between', minHeight: 104 },
