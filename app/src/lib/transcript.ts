@@ -43,7 +43,7 @@ function finishSentence(text: string): string {
   if (!value) return '';
   if (/[.!?…][”’"')\]]*$/.test(value)) return capitalizeStart(value);
   const lastWord = value.split(/\s+/).at(-1)?.toLocaleLowerCase('tr-TR') ?? '';
-  const questionWords = new Set(['mi', 'mı', 'mu', 'mü', 'ne', 'nasıl', 'neden', 'niye', 'niçin', 'kim', 'hangi', 'hangisi', 'kaç', 'nerede', 'nereye', 'nereden', 'ne zaman']);
+  const questionWords = new Set(['mi', 'mı', 'mu', 'mü', 'ne', 'nasıl', 'neden', 'niye', 'niçin', 'kim', 'hangi', 'hangisi', 'kaç', 'nerede', 'nereye', 'nereden', 'ne zaman', 'nasılsın', 'nasılsınız', 'nasılım', 'nasılız']);
   return capitalizeStart(value) + (questionWords.has(lastWord) ? '?' : '.');
 }
 
