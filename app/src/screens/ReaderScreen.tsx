@@ -567,8 +567,7 @@ export default function ReaderScreen({ route, navigation }: Props) {
       </View>
 
       <View style={[s.card, { backgroundColor: c.card, borderColor: c.border, marginBottom: Math.max(insets.bottom, 12) }]}>
-        <View style={s.cardRow}>
-          <Text style={{ color: c.muted, fontSize: 13 }}>Yazı boyutu</Text>
+        <View style={[s.cardRow, { justifyContent: 'flex-end' }]}>
           <View style={{ flexDirection: 'row', gap: 8 }}>
             <Pressable
               onPress={() => { setSelecting(false); setSel(null); setLookupMode((active) => !active); toast(lookupMode ? 'Kelime arama kapatıldı' : 'Aramak istediğin kelimeye dokun'); }}
