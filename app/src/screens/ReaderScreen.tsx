@@ -215,9 +215,6 @@ export default function ReaderScreen({ route, navigation }: Props) {
   const [speechAt,setSpeechAt]=useState(-1);
   const [sleepTimerMinutes,setSleepTimerMinutes]=useState<number | null>(null);
   const [sleepTimerEndsAt,setSleepTimerEndsAt]=useState<number | null>(null);
-  const [summaryOpen,setSummaryOpen]=useState(false);
-  const [summaryTitle,setSummaryTitle]=useState('');
-  const [summaryText,setSummaryText]=useState('');
   const [dictionaryOpen,setDictionaryOpen]=useState(false);
   const [dictionaryWord,setDictionaryWord]=useState('');
   const [dictionaryResult,setDictionaryResult]=useState('');
