@@ -19,7 +19,6 @@ import { useIsDark } from '../theme';
 import { PageFlipper, type FlipHandle } from '../components/PageFlipper';
 import { Measurer } from '../components/Measurer';
 import * as Speech from 'expo-speech';
-import { summarizeChapter } from '../lib/summary';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Reader'>;
 
@@ -449,15 +448,6 @@ export default function ReaderScreen({ route, navigation }: Props) {
     void lookupWord(word);
   };
 
-  const openSummary = () => {
-    if (!book || currentChapter < 1) { Alert.alert('Bölüm özeti', 'Özetlemek için önce bir bölüm aç.'); return; }
-    const chapter = book.chapters[currentChapter - 1];
-    if (!chapter) return;
-    setSummaryTitle(chapter.title);
-    setSummaryText(summarizeChapter(chapter.text));
-    setSummaryOpen(true);
-  };
-
   const progress = pages.length ? Math.min(1, (starts[page] ?? 0) / Math.max(1, book.totalChars)) : 0;
   const btn = [s.pill, { backgroundColor: c.card, borderColor: c.border }];
   const ready = pages.length > 0 && area.h > 0;
@@ -667,7 +657,6 @@ export default function ReaderScreen({ route, navigation }: Props) {
           onPress={() => closeAnd(() => setSheet('notes'))}
           c={c}
         />
-        <Row label="Bölüm özeti" hint="Açık bölümün önemli fikirlerini çıkar" onPress={() => closeAnd(openSummary)} c={c} />
         <Row label="Kelime sözlüğü" hint="Türkçe kelime anlamını çevrimiçi ara" onPress={() => closeAnd(() => { setDictionaryWord(''); setDictionaryResult(''); setDictionaryOpen(true); })} c={c} />
         <Row label="Söz seç ve not al" onPress={() => closeAnd(() => { setSel(null); setSelecting(true); })} c={c} />
         <Row label="Kitapta ara" onPress={() => closeAnd(() => { setQuery(''); setSearchOpen(true); })} c={c} />
@@ -866,14 +855,6 @@ export default function ReaderScreen({ route, navigation }: Props) {
         </View>
       </Modal>
 
-      <Modal visible={summaryOpen} transparent animationType="fade" onRequestClose={() => setSummaryOpen(false)}>
-        <View style={s.backdrop}><View style={[s.dialog,{backgroundColor:c.card,maxHeight:'78%'}]}>
-          <Text style={{color:c.accent,fontWeight:'800'}}>BÖLÜM ÖZETİ</Text><Text style={{color:c.head,fontSize:18,fontWeight:'800'}}>{summaryTitle}</Text>
-          <ScrollView><Text style={{color:c.text,fontSize:15,lineHeight:23}}>{summaryText}</Text></ScrollView>
-          <Text style={{color:c.muted,fontSize:11}}>Çevrimdışı, bölümdeki cümlelerden otomatik seçilmiş kısa özettir; yeni bilgi eklemez.</Text>
-          <Pressable onPress={() => setSummaryOpen(false)} style={s.noteBtn}><Text style={{color:c.accent,fontWeight:'800'}}>Kapat</Text></Pressable>
-        </View></View>
-      </Modal>
       <Modal visible={dictionaryOpen} transparent animationType="fade" onRequestClose={() => setDictionaryOpen(false)}>
         <View style={s.backdrop}><View style={[s.dialog,{backgroundColor:c.card,maxHeight:'82%'}]}>
           <Text style={{color:c.head,fontWeight:'800',fontSize:18}}>Kelime sözlüğü</Text>
