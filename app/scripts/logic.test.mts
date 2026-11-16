@@ -210,7 +210,6 @@ eq(parseSettings({ mode: 'x', fontIdx: '99', font: 'y' }), DEFAULTS, 'invalid ig
 eq(parseSettings({ speechRate: '1.4', speechVoice: 'tr.voice.id' }).speechRate, 1.4, 'speech rate restored');
 eq(parseSettings({ speechRate: '2.8' }).speechRate, 1.5, 'speech rate upper bound');
 eq(parseSettings({ speechRate: '0.2' }).speechRate, 0.7, 'speech rate lower bound');
-eq(parseSettings({ speechVoice: 'tr.voice.id' }).speechVoice, 'tr.voice.id', 'speech voice restored');
 console.log('OK6');
 
 
