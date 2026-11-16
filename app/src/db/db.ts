@@ -60,9 +60,22 @@ function getDb() {
 export async function saveBook(b: Book) {
   const db = await getDb();
   await db.runAsync(
-    `INSERT OR REPLACE INTO books
+    `INSERT INTO books
      (id,title,author,url,thumbnail,durationSec,chapters,pages,pageCount,createdAt,lastPage,lastPos,totalChars)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+     ON CONFLICT(id) DO UPDATE SET
+       title=excluded.title,
+       author=excluded.author,
+       url=excluded.url,
+       thumbnail=excluded.thumbnail,
+       durationSec=excluded.durationSec,
+       chapters=excluded.chapters,
+       pages=excluded.pages,
+       pageCount=excluded.pageCount,
+       createdAt=excluded.createdAt,
+       lastPage=excluded.lastPage,
+       lastPos=excluded.lastPos,
+       totalChars=excluded.totalChars`,
     b.id, b.title, b.author, b.url, b.thumbnail, b.durationSec,
     JSON.stringify(b.chapters), JSON.stringify(b.pages), b.pages.length, b.createdAt,
     b.lastPage, b.lastPos, b.totalChars,
