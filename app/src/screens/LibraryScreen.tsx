@@ -394,6 +394,7 @@ export default function LibraryScreen({ navigation }: Props) {
                     onPress={() => navigation.navigate('BookDetail', { id: b.id })}
                     onLongPress={() => confirmDelete(b)}
                     onToggleFavorite={() => toggleFav(b)}
+                    onSummary={() => openBookSummary(b)}
                   />
                 ))}
               </>
