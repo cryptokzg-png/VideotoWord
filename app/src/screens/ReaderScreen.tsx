@@ -67,7 +67,7 @@ function Heading({ chapter, title, c, family }: { chapter: number; title: string
 
 type TextStyleSpec = { fontFamily: string; fontSize: number; lineHeight: number };
 
-function TextPage({ text, chapter, c, width, height, spec, highlight, speechRange, selecting, sel, onWord }: {
+function TextPage({ text, chapter, c, width, height, spec, highlight, speechRange, selecting, lookupMode, sel, onWord, onLookupWord }: {
   text: string; chapter: number; c: Palette; width: number; height: number; spec: TextStyleSpec; highlight: string;
   speechRange?: { start: number; end: number } | null;
   selecting?: boolean; lookupMode?: boolean; sel?: { a: number; b: number } | null; onWord?: (i: number) => void; onLookupWord?: (word: string) => void;
@@ -878,8 +878,8 @@ export default function ReaderScreen({ route, navigation }: Props) {
       <Modal visible={dictionaryOpen} transparent animationType="fade" onRequestClose={() => setDictionaryOpen(false)}>
         <View style={s.backdrop}><View style={[s.dialog,{backgroundColor:c.card,maxHeight:'82%'}]}>
           <Text style={{color:c.head,fontWeight:'800',fontSize:18}}>Kelime sözlüğü</Text>
-          <TextInput value={dictionaryWord} onChangeText={setDictionaryWord} placeholder="Türkçe kelime yaz" placeholderTextColor={c.muted} onSubmitEditing={lookupWord} returnKeyType="search" style={[s.gotoInput,{color:c.text,borderColor:c.border,fontSize:16}]} />
-          <Pressable onPress={lookupWord} disabled={dictionaryLoading} style={[s.pill,{backgroundColor:c.accent,borderColor:c.accent,alignSelf:'flex-start',opacity:dictionaryLoading?0.6:1}]}><Text style={{color:c.onAccent,fontWeight:'800'}}>{dictionaryLoading?'Aranıyor…':'Anlamını bul'}</Text></Pressable>
+          <TextInput value={dictionaryWord} onChangeText={setDictionaryWord} placeholder="Türkçe kelime yaz" placeholderTextColor={c.muted} onSubmitEditing={() => { void lookupWord(); }} returnKeyType="search" style={[s.gotoInput,{color:c.text,borderColor:c.border,fontSize:16}]} />
+          <Pressable onPress={() => { void lookupWord(); }} disabled={dictionaryLoading} style={[s.pill,{backgroundColor:c.accent,borderColor:c.accent,alignSelf:'flex-start',opacity:dictionaryLoading?0.6:1}]}><Text style={{color:c.onAccent,fontWeight:'800'}}>{dictionaryLoading?'Aranıyor…':'Anlamını bul'}</Text></Pressable>
           <ScrollView style={{maxHeight:300}}><Text selectable style={{color:c.text,fontSize:14,lineHeight:21}}>{dictionaryResult || 'Türkçe Vikisözlük üzerinden çevrimiçi aranır. İnternet bağlantısı gerekir.'}</Text></ScrollView>
           {!!dictionaryWord.trim() && <Pressable onPress={() => Linking.openURL('https://tr.wiktionary.org/wiki/'+encodeURIComponent(dictionaryWord.trim())).catch(()=>{})} style={s.noteBtn}><Text style={{color:c.accent,fontWeight:'700'}}>Vikisözlük'te aç</Text></Pressable>}
           <Pressable onPress={() => setDictionaryOpen(false)} style={s.noteBtn}><Text style={{color:c.muted,fontWeight:'700'}}>Kapat</Text></Pressable>
