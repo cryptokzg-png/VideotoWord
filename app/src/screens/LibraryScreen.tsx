@@ -273,12 +273,19 @@ export default function LibraryScreen({ navigation }: Props) {
                       <Text style={{ color: t.text, fontWeight: '600' }}>Paylaş</Text>
                     </Pressable>
                     <Pressable
-                      onPress={async () => { await setNoteFavorite(n.id, false); load(); }}
+                      onPress={() => Alert.alert(
+                        'Favorilerden çıkarılsın mı?',
+                        'Bu söz ve kişisel notun silinmeyecek; yalnızca favori listesinden çıkarılacak.',
+                        [
+                          { text: 'Vazgeç', style: 'cancel' },
+                          { text: 'Evet, çıkar', style: 'destructive', onPress: async () => { await setNoteFavorite(n.id, false); load(); } },
+                        ],
+                      )}
                       style={s.quoteBtn}
                       accessibilityRole="button"
-                      accessibilityLabel="Favori sözlerden çıkar"
+                      accessibilityLabel="Favorilerden çıkar"
                     >
-                      <Text style={{ color: t.accent, fontSize: 20 }}>★</Text>
+                      <Text style={{ color: t.text, fontWeight: '600', fontSize: 13 }}>Favorilerden çıkar</Text>
                     </Pressable>
                   </View>
                 </View>
