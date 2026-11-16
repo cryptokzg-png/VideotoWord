@@ -221,3 +221,4 @@ const summary = summarizeChapter('Zaman insanın en değerli sermayesidir. Zaman
 if (!summary || summary.split(/\s+/).length < 8) { console.error('FAIL chapter summary'); process.exit(1); }
 console.log('OK summary');
 
+
