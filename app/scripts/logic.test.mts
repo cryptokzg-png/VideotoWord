@@ -220,3 +220,4 @@ console.log('OK6');
 const summary = summarizeChapter('Zaman insanın en değerli sermayesidir. Zaman geri gelmez. İnsan zamanını doğru kullanmalıdır. Zamanı doğru kullanmak başarı getirir. Her insan kendi zamanından sorumludur.', 3);
 if (!summary || summary.split(/\s+/).length < 8) { console.error('FAIL chapter summary'); process.exit(1); }
 console.log('OK summary');
+
