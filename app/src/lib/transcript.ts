@@ -57,7 +57,7 @@ export function toParagraphs(cues: Cue[], softChars = 450, hardChars = 900): str
   let cur = '';
   let prevEnd = 0;
   const flush = () => {
-    if (cur.trim()) paras.push(cur.trim());
+    if (cur.trim()) paras.push(finishSentence(cur));
     cur = '';
   };
   for (const c of cues) {
@@ -70,8 +70,7 @@ export function toParagraphs(cues: Cue[], softChars = 450, hardChars = 900): str
     prevEnd = c.start + c.dur;
     if (cur.length >= hardChars || (cur.length >= 300 && /[.!?…]["')]?$/.test(cur))) flush();
   }
-  if (cur.trim()) paras.push(finishSentence(cur));
-
+  flush();
   return paras;
 }
 
