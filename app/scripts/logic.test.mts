@@ -1,4 +1,5 @@
 import { cleanCues, toParagraphs, splitIntoChapters } from '../src/lib/transcript';
+import { summarizeChapter } from '../src/lib/summary';
 import { paginate } from '../src/lib/paginate';
 import { sizeLabel } from '../src/lib/sizeLabel';
 import { parseVideoId } from '../src/lib/youtube';
@@ -215,3 +216,7 @@ console.log('OK6');
 
 
 
+
+const summary = summarizeChapter('Zaman insanın en değerli sermayesidir. Zaman geri gelmez. İnsan zamanını doğru kullanmalıdır. Zamanı doğru kullanmak başarı getirir. Her insan kendi zamanından sorumludur.', 3);
+if (!summary || summary.split(/\s+/).length < 8) { console.error('FAIL chapter summary'); process.exit(1); }
+console.log('OK summary');
