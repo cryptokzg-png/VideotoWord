@@ -19,6 +19,7 @@ import { useIsDark } from '../theme';
 import { PageFlipper, type FlipHandle } from '../components/PageFlipper';
 import { Measurer } from '../components/Measurer';
 import * as Speech from 'expo-speech';
+import { summarizeChapter } from '../lib/summary';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Reader'>;
 
@@ -213,6 +214,15 @@ export default function ReaderScreen({ route, navigation }: Props) {
   const [speechOpen,setSpeechOpen]=useState(false);
   const [speechStatus,setSpeechStatus]=useState<'idle'|'playing'|'paused'>('idle');
   const [speechAt,setSpeechAt]=useState(-1);
+  const [sleepTimerMinutes,setSleepTimerMinutes]=useState<number | null>(null);
+  const [sleepTimerEndsAt,setSleepTimerEndsAt]=useState<number | null>(null);
+  const [summaryOpen,setSummaryOpen]=useState(false);
+  const [summaryTitle,setSummaryTitle]=useState('');
+  const [summaryText,setSummaryText]=useState('');
+  const [dictionaryOpen,setDictionaryOpen]=useState(false);
+  const [dictionaryWord,setDictionaryWord]=useState('');
+  const [dictionaryResult,setDictionaryResult]=useState('');
+  const [dictionaryLoading,setDictionaryLoading]=useState(false);
 
   const fontSize = BASE_FONT * FONT_SCALES[settings.fontIdx] * (large ? 1.25 : 1);
   const spec: TextStyleSpec = useMemo(
@@ -333,6 +343,52 @@ export default function ReaderScreen({ route, navigation }: Props) {
   const stopSpeech=()=>{speechToken.current+=1;Speech.stop();setSpeechStatus('idle');setSpeechAt(-1);};
   const skipSpeech=(delta:-1|1)=>{const base=speechAt>=0?speechAt:speechIndex.current;void speakFrom(Math.max(0,Math.min(speechSentences.length-1,base+delta)));};
   useEffect(()=>()=>{speechToken.current+=1;Speech.stop();},[]);
+
+  useEffect(() => {
+    if (!sleepTimerEndsAt) return;
+    const timer = setTimeout(() => {
+      stopSpeech();
+      setSleepTimerEndsAt(null);
+      setSleepTimerMinutes(null);
+      toast('Uyku zamanlayıcısı: Sesli okuma durduruldu');
+    }, Math.max(0, sleepTimerEndsAt - Date.now()));
+    return () => clearTimeout(timer);
+  }, [sleepTimerEndsAt]);
+
+  const startSleepTimer = (minutes: number) => {
+    setSleepTimerMinutes(minutes);
+    setSleepTimerEndsAt(Date.now() + minutes * 60 * 1000);
+    toast(`Sesli okuma ${minutes} dakika sonra duracak`);
+  };
+  const cancelSleepTimer = () => { setSleepTimerEndsAt(null); setSleepTimerMinutes(null); };
+
+  const openSummary = () => {
+    if (!book || currentChapter < 1) { Alert.alert('Bölüm özeti', 'Özetlemek için önce bir bölüm aç.'); return; }
+    const chapter = book.chapters[currentChapter - 1];
+    if (!chapter) return;
+    setSummaryTitle(chapter.title);
+    setSummaryText(summarizeChapter(chapter.text));
+    setSummaryOpen(true);
+  };
+
+  const lookupWord = async () => {
+    const word = dictionaryWord.trim().replace(/^[^\\p{L}]+|[^\\p{L}]+$/gu, '');
+    if (!word) { setDictionaryResult('Lütfen bir kelime yaz.'); return; }
+    setDictionaryLoading(true);
+    setDictionaryResult('');
+    try {
+      const url = `https://tr.wiktionary.org/w/api.php?action=query&prop=extracts&explaintext=1&exsectionformat=plain&titles=${encodeURIComponent(word)}&format=json&origin=*`;
+      const response = await fetch(url);
+      if (!response.ok) throw new Error('Sözlük hizmetine ulaşılamadı.');
+      const data = await response.json();
+      const pagesData = data?.query?.pages ?? {};
+      const pageData = Object.values(pagesData)[0] as { title?: string; extract?: string } | undefined;
+      const extract = (pageData?.extract ?? '').trim();
+      setDictionaryResult(extract ? `${pageData?.title ?? word}\\n\\n${extract.slice(0, 1800)}` : 'Bu kelime için Türkçe Vikisözlük kaydı bulunamadı. Başka yazılış deneyebilir veya webde arayabilirsin.');
+    } catch (error: any) {
+      setDictionaryResult(error?.message ?? 'Sözlük aranırken bir hata oluştu. İnternet bağlantını kontrol et.');
+    } finally { setDictionaryLoading(false); }
+  };
 
   const onWord = (i: number) => setSel((cur) => tapWord(cur, i));
 
@@ -595,6 +651,8 @@ export default function ReaderScreen({ route, navigation }: Props) {
           onPress={() => closeAnd(() => setSheet('notes'))}
           c={c}
         />
+        <Row label="Bölüm özeti" hint="Açık bölümün önemli fikirlerini çıkar" onPress={() => closeAnd(openSummary)} c={c} />
+        <Row label="Kelime sözlüğü" hint="Türkçe kelime anlamını çevrimiçi ara" onPress={() => closeAnd(() => { setDictionaryWord(''); setDictionaryResult(''); setDictionaryOpen(true); })} c={c} />
         <Row label="Söz seç ve not al" onPress={() => closeAnd(() => { setSel(null); setSelecting(true); })} c={c} />
         <Row label="Kitapta ara" onPress={() => closeAnd(() => { setQuery(''); setSearchOpen(true); })} c={c} />
         <Row label="Sayfaya git" onPress={() => closeAnd(() => { setGotoText(''); setGoto(true); })} c={c} />
@@ -630,7 +688,14 @@ export default function ReaderScreen({ route, navigation }: Props) {
             <Pressable onPress={()=>update({speechRate:Math.min(1.5,Math.round((settings.speechRate+0.1)*10)/10)})} style={s.square}><Text style={{color:c.text}}>+</Text></Pressable>
           </View>
         </View>
-        <Text style={{color:c.muted,fontSize:12,paddingVertical:8}}>Ekran kilitliyken arka planda okuma Android'in TTS hizmetine ve pil ayarlarına bağlıdır; bu sürümde garanti edilemez.</Text>
+        <View style={{height:1,backgroundColor:c.border,marginVertical:10}} />
+        <Text style={{color:c.text,fontWeight:'800',paddingBottom:6}}>Uyku zamanlayıcısı</Text>
+        <Text style={{color:c.muted,fontSize:12,paddingBottom:8}}>{sleepTimerMinutes ? `Sesli okuma ${sleepTimerMinutes} dakika sonra duracak.` : 'Belirlediğin süre sonunda sesli okuma otomatik durur.'}</Text>
+        <View style={{flexDirection:'row',flexWrap:'wrap',gap:8}}>
+          {[10,20,30,60].map((minutes) => <Pressable key={minutes} onPress={() => startSleepTimer(minutes)} style={[s.pill,{backgroundColor:sleepTimerMinutes===minutes?c.accent:c.card,borderColor:sleepTimerMinutes===minutes?c.accent:c.border}]}><Text style={{color:sleepTimerMinutes===minutes?c.onAccent:c.text,fontWeight:'700'}}>{minutes} dk</Text></Pressable>)}
+          {sleepTimerMinutes !== null && <Pressable onPress={cancelSleepTimer} style={[s.pill,{backgroundColor:c.card,borderColor:c.border}]}><Text style={{color:c.text}}>İptal</Text></Pressable>}
+        </View>
+        <Text style={{color:c.muted,fontSize:12,paddingVertical:8}}>Android pil yönetimi nedeniyle uygulama uzun süre arka planda kalırsa zamanlayıcının çalışması telefona bağlı olabilir.</Text>
       </Sheet>
 
       {/* Bölümler */}
@@ -783,6 +848,25 @@ export default function ReaderScreen({ route, navigation }: Props) {
             </View>
           </View>
         </View>
+      </Modal>
+
+      <Modal visible={summaryOpen} transparent animationType="fade" onRequestClose={() => setSummaryOpen(false)}>
+        <View style={s.backdrop}><View style={[s.dialog,{backgroundColor:c.card,maxHeight:'78%'}]}>
+          <Text style={{color:c.accent,fontWeight:'800'}}>BÖLÜM ÖZETİ</Text><Text style={{color:c.head,fontSize:18,fontWeight:'800'}}>{summaryTitle}</Text>
+          <ScrollView><Text style={{color:c.text,fontSize:15,lineHeight:23}}>{summaryText}</Text></ScrollView>
+          <Text style={{color:c.muted,fontSize:11}}>Çevrimdışı, bölümdeki cümlelerden otomatik seçilmiş kısa özettir; yeni bilgi eklemez.</Text>
+          <Pressable onPress={() => setSummaryOpen(false)} style={s.noteBtn}><Text style={{color:c.accent,fontWeight:'800'}}>Kapat</Text></Pressable>
+        </View></View>
+      </Modal>
+      <Modal visible={dictionaryOpen} transparent animationType="fade" onRequestClose={() => setDictionaryOpen(false)}>
+        <View style={s.backdrop}><View style={[s.dialog,{backgroundColor:c.card,maxHeight:'82%'}]}>
+          <Text style={{color:c.head,fontWeight:'800',fontSize:18}}>Kelime sözlüğü</Text>
+          <TextInput value={dictionaryWord} onChangeText={setDictionaryWord} placeholder="Türkçe kelime yaz" placeholderTextColor={c.muted} onSubmitEditing={lookupWord} returnKeyType="search" style={[s.gotoInput,{color:c.text,borderColor:c.border,fontSize:16}]} />
+          <Pressable onPress={lookupWord} disabled={dictionaryLoading} style={[s.pill,{backgroundColor:c.accent,borderColor:c.accent,alignSelf:'flex-start',opacity:dictionaryLoading?0.6:1}]}><Text style={{color:c.onAccent,fontWeight:'800'}}>{dictionaryLoading?'Aranıyor…':'Anlamını bul'}</Text></Pressable>
+          <ScrollView style={{maxHeight:300}}><Text selectable style={{color:c.text,fontSize:14,lineHeight:21}}>{dictionaryResult || 'Türkçe Vikisözlük üzerinden çevrimiçi aranır. İnternet bağlantısı gerekir.'}</Text></ScrollView>
+          {!!dictionaryWord.trim() && <Pressable onPress={() => Linking.openURL('https://tr.wiktionary.org/wiki/'+encodeURIComponent(dictionaryWord.trim())).catch(()=>{})} style={s.noteBtn}><Text style={{color:c.accent,fontWeight:'700'}}>Vikisözlük'te aç</Text></Pressable>}
+          <Pressable onPress={() => setDictionaryOpen(false)} style={s.noteBtn}><Text style={{color:c.muted,fontWeight:'700'}}>Kapat</Text></Pressable>
+        </View></View>
       </Modal>
 
       {/* Kitapta ara */}
