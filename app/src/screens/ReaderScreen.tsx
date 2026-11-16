@@ -18,8 +18,28 @@ import { FONT_FAMILIES, FONT_SCALES, useSettings } from '../settings';
 import { useIsDark } from '../theme';
 import { PageFlipper, type FlipHandle } from '../components/PageFlipper';
 import { Measurer } from '../components/Measurer';
+import * as Speech from 'expo-speech';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Reader'>;
+
+type SpeechSentence = { text: string; page: number; start: number; end: number };
+function makeSpeechSentences(pages: string[]): SpeechSentence[] {
+  const out: SpeechSentence[] = [];
+  pages.forEach((pageText, page) => {
+    if (page === 0) return;
+    const sep = pageText.startsWith('# ') ? pageText.indexOf('\\n\\n') : -1;
+    const body = sep >= 0 ? pageText.slice(sep + 2) : pageText;
+    const re = /[^.!?…]+(?:[.!?…]+[\"'”’»)}\\]]*)?|[.!?…]+/gu;
+    for (const match of body.matchAll(re)) {
+      const raw=match[0], leading=raw.length-raw.trimStart().length, trimmed=raw.trim();
+      if(!trimmed) continue;
+      const start=(match.index??0)+leading;
+      if(trimmed.length<=360) out.push({text:trimmed,page,start,end:start+trimmed.length});
+      else { let offset=0; while(offset<trimmed.length){let cut=Math.min(offset+300,trimmed.length);if(cut<trimmed.length){const space=trimmed.lastIndexOf(' ',cut);if(space>offset+160)cut=space;} const part=trimmed.slice(offset,cut).trim();if(part){const local=trimmed.indexOf(part,offset);out.push({text:part,page,start:start+local,end:start+local+part.length});}offset=cut;} }
+    }
+  });
+  return out;
+}
 
 const NIGHT = { bg: '#0B1228', card: '#121B3A', border: '#2A3566', text: '#DDE3F5', head: '#FFFFFF', muted: '#9AA6C8', accent: '#D4AF37', onAccent: '#1B1204', mark: '#6B5A12' };
 const DAY = { bg: '#F5F2EA', card: '#FFFFFF', border: '#E3DED5', text: '#141B34', head: '#141B34', muted: '#5F6578', accent: '#1E3A8A', onAccent: '#FFFFFF', mark: '#FFE58A' };
@@ -46,8 +66,9 @@ function Heading({ chapter, title, c, family }: { chapter: number; title: string
 
 type TextStyleSpec = { fontFamily: string; fontSize: number; lineHeight: number };
 
-function TextPage({ text, chapter, c, width, height, spec, highlight, selecting, sel, onWord }: {
+function TextPage({ text, chapter, c, width, height, spec, highlight, speechRange, selecting, sel, onWord }: {
   text: string; chapter: number; c: Palette; width: number; height: number; spec: TextStyleSpec; highlight: string;
+  speechRange?: { start: number; end: number } | null;
   selecting?: boolean; sel?: { a: number; b: number } | null; onWord?: (i: number) => void;
 }) {
   const isHeading = text.startsWith('# ');
@@ -56,6 +77,7 @@ function TextPage({ text, chapter, c, width, height, spec, highlight, selecting,
   const body = isHeading ? text.slice(sep + 2) : text;
   // highlight / selection only change the background, so they never change the line breaks
   const pieces = !selecting && highlight ? splitByMatch(body, highlight) : null;
+  const speechPieces = !selecting && speechRange ? [{ text: body.slice(0, speechRange.start), hit: false }, { text: body.slice(speechRange.start, speechRange.end), hit: true }, { text: body.slice(speechRange.end), hit: false }].filter((p) => p.text.length > 0) : null;
   const lo = sel ? Math.min(sel.a, sel.b) : -1;
   const hi = sel ? Math.max(sel.a, sel.b) : -1;
   return (
@@ -81,8 +103,10 @@ function TextPage({ text, chapter, c, width, height, spec, highlight, selecting,
                 t.text
               ),
             )
-          : pieces
-            ? pieces.map((p, i) => (p.hit ? <Text key={i} style={{ backgroundColor: c.mark }}>{p.text}</Text> : p.text))
+          : speechPieces
+            ? speechPieces.map((p, i) => (p.hit ? <Text key={`speech-${i}`} style={{ backgroundColor: c.mark }}>{p.text}</Text> : p.text))
+            : pieces
+              ? pieces.map((p, i) => (p.hit ? <Text key={i} style={{ backgroundColor: c.mark }}>{p.text}</Text> : p.text))
             : body}
       </Text>
     </View>
@@ -184,6 +208,12 @@ export default function ReaderScreen({ route, navigation }: Props) {
   const shot = useRef<ComponentRef<typeof View>>(null);
   const posRef = useRef(0); // reading position (non-space chars); survives re-layout
   const startedFresh = useRef(true);
+  const pageRef = useRef(page); pageRef.current = page;
+  const speechToken = useRef(0), speechIndex = useRef(0);
+  const speechVoice = useRef<string | null>(null);
+  const [speechOpen,setSpeechOpen]=useState(false);
+  const [speechStatus,setSpeechStatus]=useState<'idle'|'playing'|'paused'>('idle');
+  const [speechAt,setSpeechAt]=useState(-1), [speechRate,setSpeechRate]=useState(1);
 
   const fontSize = BASE_FONT * FONT_SCALES[settings.fontIdx] * (large ? 1.25 : 1);
   const spec: TextStyleSpec = useMemo(
@@ -288,6 +318,23 @@ export default function ReaderScreen({ route, navigation }: Props) {
     const t = pages[i] ?? '';
     return t.startsWith('# ') ? t.slice(t.indexOf('\n\n') + 2) : t;
   };
+
+  const speechSentences = useMemo(() => makeSpeechSentences(pages), [pages]);
+  const speakFrom = async (index: number) => {
+    if(index<0||index>=speechSentences.length)return;
+    const token=++speechToken.current; speechIndex.current=index; setSpeechAt(index); setSpeechStatus('playing');
+    const sentence=speechSentences[index]; if(pageRef.current!==sentence.page)jump(sentence.page);
+    try {
+      if(!speechVoice.current){const voices=await Speech.getAvailableVoicesAsync();const tr=voices.find(v=>/^tr(?:-|$)/i.test(v.language));
+        if(!tr){setSpeechStatus('idle');Alert.alert('Türkçe ses bulunamadı','Telefonunda Ayarlar > Metin okuma / Metin-konuşma çıkışı bölümünden Türkçe sesi indirip tekrar dene.');return;} speechVoice.current=tr.identifier;}
+      if(token!==speechToken.current)return;
+      Speech.speak(sentence.text,{language:'tr-TR',voice:speechVoice.current,rate:speechRate,onDone:()=>{if(token!==speechToken.current)return;const next=index+1;if(next<speechSentences.length)void speakFrom(next);else{setSpeechStatus('idle');setSpeechAt(-1);}},onError:(e)=>{if(token!==speechToken.current)return;setSpeechStatus('idle');Alert.alert('Sesli okuma durdu',e.message||'Metin okunamadı.');}});
+    }catch(e:any){if(token!==speechToken.current)return;setSpeechStatus('idle');Alert.alert('Sesli okuma başlatılamadı',String(e?.message??e));}
+  };
+  const pauseSpeech=()=>{if(speechStatus!=='playing')return;speechToken.current+=1;Speech.stop();setSpeechStatus('paused');};
+  const stopSpeech=()=>{speechToken.current+=1;Speech.stop();setSpeechStatus('idle');setSpeechAt(-1);};
+  const skipSpeech=(delta:-1|1)=>{const base=speechAt>=0?speechAt:speechIndex.current;void speakFrom(Math.max(0,Math.min(speechSentences.length-1,base+delta)));};
+  useEffect(()=>()=>{speechToken.current+=1;Speech.stop();},[]);
 
   const onWord = (i: number) => setSel((cur) => tapWord(cur, i));
 
@@ -401,6 +448,11 @@ export default function ReaderScreen({ route, navigation }: Props) {
           <Text style={[s.pillText, { color: c.text }]}>{large ? 'Küçült' : 'Büyüt'}</Text>
         </Pressable>}
         {selecting ? null : (
+          <Pressable onPress={() => setSpeechOpen(true)} style={btn} accessibilityRole="button" accessibilityLabel="Sesli okumayı aç">
+            <Text style={[s.pillText, { color: c.text }]}>🔊 Dinle</Text>
+          </Pressable>
+        )}
+        {selecting ? null : (
           <Pressable onPress={() => setSheet('menu')} style={btn} accessibilityRole="button">
             <Text style={[s.pillText, { color: c.text }]}>Menü</Text>
           </Pressable>
@@ -439,6 +491,7 @@ export default function ReaderScreen({ route, navigation }: Props) {
               ) : (
                 <TextPage
                   text={pages[i]} chapter={chapterOf[i]} c={c} width={width} height={area.h} spec={spec} highlight={highlight}
+                  speechRange={speechAt >= 0 && speechSentences[speechAt]?.page === i ? { start: speechSentences[speechAt].start, end: speechSentences[speechAt].end } : null}
                   selecting={selecting && i === page} sel={i === page ? sel : null} onWord={onWord}
                 />
               )
@@ -560,6 +613,25 @@ export default function ReaderScreen({ route, navigation }: Props) {
         {busy && <Text style={{ color: c.muted, paddingVertical: 8, paddingHorizontal: 4 }}>{busy}</Text>}
         <View style={[s.sep, { backgroundColor: c.border }]} />
         <Row label="Kitabı kapat" onPress={() => { setSheet(null); navigation.goBack(); }} c={c} />
+      </Sheet>
+
+      {/* Sesli okuma */}
+      <Sheet visible={speechOpen} onClose={() => setSpeechOpen(false)} title="Türkçe sesli okuma" c={c}>
+        <Text style={{color:c.muted,fontSize:13,paddingHorizontal:4,paddingBottom:8}}>{speechAt>=0?`Cümle ${speechAt+1} / ${speechSentences.length}`:'Kitap başından veya seçtiğin sayfadan okumaya başla'}</Text>
+        <View style={{flexDirection:'row',flexWrap:'wrap',gap:8,paddingVertical:8}}>
+          <Pressable onPress={()=>skipSpeech(-1)} disabled={!speechSentences.length} style={[s.pill,{backgroundColor:c.card,borderColor:c.border,opacity:speechSentences.length?1:0.4}]}><Text style={{color:c.text}}>‹ Cümle</Text></Pressable>
+          <Pressable onPress={()=>speechStatus==='playing'?pauseSpeech():void speakFrom(speechAt>=0?speechAt:Math.max(0,speechSentences.findIndex(x=>x.page===page)))} disabled={!speechSentences.length} style={[s.pill,{backgroundColor:c.accent,borderColor:c.accent}]}><Text style={{color:c.onAccent,fontWeight:'800'}}>{speechStatus==='playing'?'Duraklat':speechStatus==='paused'?'Sürdür':'Başlat'}</Text></Pressable>
+          <Pressable onPress={()=>skipSpeech(1)} disabled={!speechSentences.length} style={[s.pill,{backgroundColor:c.card,borderColor:c.border,opacity:speechSentences.length?1:0.4}]}><Text style={{color:c.text}}>Cümle ›</Text></Pressable>
+          <Pressable onPress={stopSpeech} style={[s.pill,{backgroundColor:c.card,borderColor:c.border}]}><Text style={{color:c.text}}>Durdur</Text></Pressable>
+        </View>
+        <View style={{flexDirection:'row',alignItems:'center',justifyContent:'space-between',paddingVertical:8}}>
+          <Text style={{color:c.text}}>Okuma hızı</Text><View style={{flexDirection:'row',alignItems:'center',gap:12}}>
+            <Pressable onPress={()=>setSpeechRate(v=>Math.max(0.7,Math.round((v-0.1)*10)/10))} style={s.square}><Text style={{color:c.text}}>−</Text></Pressable>
+            <Text style={{color:c.accent,fontWeight:'800'}}>{speechRate.toFixed(1)}×</Text>
+            <Pressable onPress={()=>setSpeechRate(v=>Math.min(1.5,Math.round((v+0.1)*10)/10))} style={s.square}><Text style={{color:c.text}}>+</Text></Pressable>
+          </View>
+        </View>
+        <Text style={{color:c.muted,fontSize:12,paddingVertical:8}}>Ekran kilitliyken arka planda okuma Android'in TTS hizmetine ve pil ayarlarına bağlıdır; bu sürümde garanti edilemez.</Text>
       </Sheet>
 
       {/* Bölümler */}
