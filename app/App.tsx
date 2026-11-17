@@ -11,6 +11,7 @@ import ConvertScreen from './src/screens/ConvertScreen';
 import BookDetailScreen from './src/screens/BookDetailScreen';
 import ReaderScreen from './src/screens/ReaderScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
+import { FloatingSpeechPlayer, SpeechPlayerProvider } from './src/SpeechPlayer';
 import { parseVideoId } from './src/lib/youtube';
 import { SettingsProvider } from './src/settings';
 import { useIsDark, useTheme } from './src/theme';
@@ -73,6 +74,7 @@ function Root() {
         </Stack.Navigator>
         <LinkHandler ready={ready} />
       </NavigationContainer>
+      <FloatingSpeechPlayer />
       <StatusBar style={isDark ? 'light' : 'dark'} />
     </>
   );
@@ -84,7 +86,9 @@ export default function App() {
       <SafeAreaProvider>
         <ShareIntentProvider>
           <SettingsProvider>
-            <Root />
+            <SpeechPlayerProvider>
+              <Root />
+            </SpeechPlayerProvider>
           </SettingsProvider>
         </ShareIntentProvider>
       </SafeAreaProvider>
