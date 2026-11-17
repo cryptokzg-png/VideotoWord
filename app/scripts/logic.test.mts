@@ -209,7 +209,7 @@ eq(parseSettings({}), DEFAULTS, 'defaults');
 eq(parseSettings({ mode: 'night', fontIdx: '3', font: 'sans' }), { ...DEFAULTS, mode: 'night', fontIdx: 3, font: 'sans' }, 'parse');
 eq(parseSettings({ mode: 'x', fontIdx: '99', font: 'y' }), DEFAULTS, 'invalid ignored');
 eq(parseSettings({ speechRate: '1.4', speechVoice: 'tr.voice.id' }).speechRate, 1.4, 'speech rate restored');
-eq(parseSettings({ speechRate: '2.8' }).speechRate, 1.5, 'speech rate upper bound');
+eq(parseSettings({ speechRate: '2.8' }).speechRate, 2.5, 'speech rate upper bound');
 eq(parseSettings({ speechRate: '0.2' }).speechRate, 0.7, 'speech rate lower bound');
 console.log('OK6');
 
@@ -225,7 +225,6 @@ console.log('OK summary');
 
 
 // ---- speech speed settings ----
-import { parseSettings, DEFAULTS } from '../src/lib/settingsModel';
 eq(parseSettings({ speechRate: '2.5' }).speechRate, 2.5, 'speech speed allows 2.5x');
 eq(parseSettings({ speechRate: '3.0' }).speechRate, 2.5, 'speech speed clamps at 2.5x');
 eq(parseSettings({ speechRate: '0.2' }).speechRate, 0.7, 'speech speed minimum');
