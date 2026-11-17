@@ -376,7 +376,7 @@ export default function ReaderScreen({ route, navigation }: Props) {
               }
             }
           }
-          result = lines.filter(Boolean).join('\\n\\n').trim();
+          result = lines.filter(Boolean).join('\n\n').trim();
         }
       } catch { /* Fall back to Wiktionary if TDK is unavailable. */ }
 
@@ -390,7 +390,7 @@ export default function ReaderScreen({ route, navigation }: Props) {
             const pagesData = data?.query?.pages ?? {};
             const pageData = Object.values(pagesData)[0] as { title?: string; extract?: string } | undefined;
             const extract = (pageData?.extract ?? '').trim();
-            if (extract) result = `${pageData?.title ?? word}\\n\\n${extract}`;
+            if (extract) result = `${pageData?.title ?? word}\n\n${extract}`;
           }
         } catch { /* Try REST endpoint below. */ }
       }
@@ -400,7 +400,7 @@ export default function ReaderScreen({ route, navigation }: Props) {
           const response = await fetch(restUrl, { headers: { Accept: 'application/json' } });
           if (response.ok) {
             const data = await response.json();
-            result = [data?.title, data?.extract ?? data?.description].filter(Boolean).join('\\n\\n').trim();
+            result = [data?.title, data?.extract ?? data?.description].filter(Boolean).join('\n\n').trim();
           }
         } catch { /* Show the service fallback message below. */ }
       }
@@ -629,36 +629,47 @@ export default function ReaderScreen({ route, navigation }: Props) {
           )}
           <View style={s.selActions}>
             <Pressable
-              onPress={() => { if (picked && picked.quote.trim().split(/\s+/).length === 1) void lookupWord(picked.quote); else toast('Anlamını aramak için tek kelime seç'); }}
+              onPress={() => {
+                if (!picked || picked.quote.trim().split(/\s+/).length !== 1) {
+                  toast('Anlamını aramak için tek kelime seç');
+                  return;
+                }
+                void lookupWord(picked.quote);
+              }}
               disabled={!picked || picked.quote.trim().split(/\s+/).length !== 1}
-              style={[s.selActionButton, { borderColor: c.border, backgroundColor: c.bg, opacity: picked && picked.quote.trim().split(/\s+/).length === 1 ? 1 : 0.45 }]}
+              hitSlop={8}
+              style={[s.selSearchButton, { backgroundColor: c.accent, opacity: picked && picked.quote.trim().split(/\s+/).length === 1 ? 1 : 0.45 }]}
               accessibilityRole="button"
               accessibilityLabel="Seçilen kelimenin anlamını bul"
             >
-              <Text numberOfLines={1} adjustsFontSizeToFit style={{ color: c.accent, fontWeight: '800' }}>⌕ Anlamını bul</Text>
+              <Text style={{ color: c.onAccent, fontWeight: '800', fontSize: 15 }}>⌕  Anlamını bul</Text>
             </Pressable>
-            <Pressable
-              onPress={() => saveQuote(true, '')}
-              disabled={!picked}
-              style={[s.selActionButton, { borderColor: c.border, backgroundColor: c.bg, opacity: picked ? 1 : 0.45 }]}
-              accessibilityRole="button"
-            >
-              <Text numberOfLines={1} adjustsFontSizeToFit style={{ color: c.accent, fontWeight: '800' }}>★ Favori söz</Text>
-            </Pressable>
-            <Pressable
-              onPress={() => picked && setNoteDialog({ quote: picked.quote, pos: (starts[page] ?? 0) + picked.offset, text: '' })}
-              disabled={!picked}
-              style={[s.selActionButton, { borderColor: c.accent, backgroundColor: c.accent, opacity: picked ? 1 : 0.45 }]}
-              accessibilityRole="button"
-            >
-              <Text numberOfLines={1} adjustsFontSizeToFit style={{ color: c.onAccent, fontWeight: '800' }}>Notlara ekle</Text>
-            </Pressable>
+            <View style={s.selSecondaryRow}>
+              <Pressable
+                onPress={() => saveQuote(true, '')}
+                disabled={!picked}
+                hitSlop={6}
+                style={[s.selSecondaryButton, { borderColor: c.border, backgroundColor: c.bg, opacity: picked ? 1 : 0.45 }]}
+                accessibilityRole="button"
+              >
+                <Text numberOfLines={1} adjustsFontSizeToFit style={{ color: c.accent, fontWeight: '800' }}>★ Favori söz</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => picked && setNoteDialog({ quote: picked.quote, pos: (starts[page] ?? 0) + picked.offset, text: '' })}
+                disabled={!picked}
+                hitSlop={6}
+                style={[s.selSecondaryButton, { borderColor: c.border, backgroundColor: c.bg, opacity: picked ? 1 : 0.45 }]}
+                accessibilityRole="button"
+              >
+                <Text numberOfLines={1} adjustsFontSizeToFit style={{ color: c.accent, fontWeight: '800' }}>✎ Notlara ekle</Text>
+              </Pressable>
+            </View>
             <Pressable
               onPress={() => { setSelecting(false); setSel(null); }}
-              style={[s.selActionButton, { borderColor: c.border, backgroundColor: 'transparent' }]}
+              style={s.selCancelButton}
               accessibilityRole="button"
             >
-              <Text numberOfLines={1} style={{ color: c.muted, fontWeight: '700' }}>Vazgeç</Text>
+              <Text style={{ color: c.muted, fontWeight: '700' }}>Vazgeç</Text>
             </Pressable>
           </View>
         </View>
@@ -989,8 +1000,11 @@ const s = StyleSheet.create({
   chapMain: { flex: 1, flexDirection: 'row', alignItems: 'center', minHeight: 56, paddingVertical: 8, paddingHorizontal: 4 },
   chapEdit: { width: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
   selBar: { position: 'absolute', left: 20, right: 20, borderWidth: 1.5, borderRadius: 16, padding: 12, gap: 8 },
-  selActions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'stretch', justifyContent: 'space-between', gap: 8 },
-  selActionButton: { flexBasis: '48%', flexGrow: 1, minWidth: 0, minHeight: 46, paddingHorizontal: 8, borderRadius: 12, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  selActions: { flexDirection: 'column', width: '100%', gap: 8 },
+  selSearchButton: { width: '100%', minHeight: 50, borderRadius: 13, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12 },
+  selSecondaryRow: { width: '100%', flexDirection: 'row', gap: 8 },
+  selSecondaryButton: { flex: 1, minWidth: 0, minHeight: 48, paddingHorizontal: 8, borderRadius: 12, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  selCancelButton: { width: '100%', minHeight: 38, alignItems: 'center', justifyContent: 'center' },
   selBtn: { minHeight: 44, paddingHorizontal: 12, borderRadius: 12, justifyContent: 'center' },
   selPrimary: { paddingHorizontal: 16 },
   tabs: { flexDirection: 'row', gap: 8, marginBottom: 8 },
