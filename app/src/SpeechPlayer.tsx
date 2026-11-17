@@ -147,3 +147,4 @@ const styles = StyleSheet.create({
   controlText: { color: '#FFFFFF', fontWeight: '900', fontSize: 17 },
 });
 
+
