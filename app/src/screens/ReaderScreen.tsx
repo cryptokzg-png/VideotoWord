@@ -360,34 +360,61 @@ export default function ReaderScreen({ route, navigation }: Props) {
   const cancelSleepTimer = () => { setSleepTimerEndsAt(null); setSleepTimerMinutes(null); };
 
   const lookupWord = async (value = dictionaryWord) => {
-    const word = value.trim().replace(/^[^\p{L}]+|[^\p{L}]+$/gu, '');
+    const word = value.trim().replace(/^[^\\p{L}]+|[^\\p{L}]+$/gu, '');
     if (!word) { setDictionaryResult('Lütfen bir kelime yaz.'); return; }
     setDictionaryWord(word);
     setDictionaryOpen(true);
     setDictionaryLoading(true);
     setDictionaryResult('');
     try {
-      // Try MediaWiki's extract API first, then its REST summary endpoint.
+      // Use the Turkish Language Association dictionary first.
       let result = '';
-      const apiUrl = `https://tr.wiktionary.org/w/api.php?action=query&prop=extracts&explaintext=1&exsectionformat=plain&titles=${encodeURIComponent(word)}&format=json`;
       try {
-        const response = await fetch(apiUrl, { headers: { Accept: 'application/json' } });
+        const tdkUrl = `https://sozluk.gov.tr/gts?ara=${encodeURIComponent(word)}`;
+        const response = await fetch(tdkUrl, { headers: { Accept: 'application/json' } });
         if (response.ok) {
           const data = await response.json();
-          const pagesData = data?.query?.pages ?? {};
-          const pageData = Object.values(pagesData)[0] as { title?: string; extract?: string } | undefined;
-          result = (pageData?.extract ?? '').trim();
-          if (result) result = `${pageData?.title ?? word}\n\n${result}`;
+          const entries = Array.isArray(data) ? data : [];
+          const lines: string[] = [];
+          for (const entry of entries) {
+            if (entry?.madde) lines.push(String(entry.madde));
+            for (const item of entry?.anlamlarListe ?? []) {
+              if (item?.anlam) lines.push(String(item.anlam));
+              for (const example of item?.orneklerListe ?? []) {
+                const sample = example?.ornek ?? example?.ornekMetni;
+                if (sample) lines.push(`Örnek: ${String(sample).replace(/<[^>]*>/g, '')}`);
+              }
+            }
+          }
+          result = lines.filter(Boolean).join('\\n\\n').trim();
         }
-      } catch { /* Try the REST endpoint below. */ }
+      } catch { /* Fall back to Wiktionary if TDK is unavailable. */ }
+
+      // Keep Wiktionary as a secondary source.
+      if (!result) {
+        const apiUrl = `https://tr.wiktionary.org/w/api.php?action=query&prop=extracts&explaintext=1&exsectionformat=plain&titles=${encodeURIComponent(word)}&format=json`;
+        try {
+          const response = await fetch(apiUrl, { headers: { Accept: 'application/json' } });
+          if (response.ok) {
+            const data = await response.json();
+            const pagesData = data?.query?.pages ?? {};
+            const pageData = Object.values(pagesData)[0] as { title?: string; extract?: string } | undefined;
+            const extract = (pageData?.extract ?? '').trim();
+            if (extract) result = `${pageData?.title ?? word}\\n\\n${extract}`;
+          }
+        } catch { /* Try REST endpoint below. */ }
+      }
       if (!result) {
         const restUrl = `https://tr.wiktionary.org/api/rest_v1/page/summary/${encodeURIComponent(word)}`;
-        const response = await fetch(restUrl, { headers: { Accept: 'application/json' } });
-        if (!response.ok) throw new Error('Sözlük servisine şu anda ulaşılamıyor.');
-        const data = await response.json();
-        result = [data?.title, data?.extract ?? data?.description].filter(Boolean).join('\n\n').trim();
+        try {
+          const response = await fetch(restUrl, { headers: { Accept: 'application/json' } });
+          if (response.ok) {
+            const data = await response.json();
+            result = [data?.title, data?.extract ?? data?.description].filter(Boolean).join('\\n\\n').trim();
+          }
+        } catch { /* Show the service fallback message below. */ }
       }
-      setDictionaryResult(result ? result.slice(0, 1800) : 'Bu kelime için Türkçe Vikisözlük kaydı bulunamadı. Başka yazılış deneyebilir veya webde arayabilirsin.');
+      setDictionaryResult(result ? result.slice(0, 1800) : 'Bu kelime için sözlük kaydı bulunamadı. Başka yazılış deneyebilir veya “Vikisözlük’te aç” seçeneğini kullanabilirsin.');
     } catch {
       setDictionaryResult('Sözlük servisine ulaşılamadı. İnternet bağlantını kontrol et veya “Vikisözlük’te aç” seçeneğini kullan.');
     } finally { setDictionaryLoading(false); }
