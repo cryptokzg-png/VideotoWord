@@ -67,7 +67,7 @@ function Heading({ chapter, title, c, family }: { chapter: number; title: string
 type TextStyleSpec = { fontFamily: string; fontSize: number; lineHeight: number };
 
 function TextPage({ text, chapter, c, width, height, spec, highlight, speechRange, selecting, lookupMode, sel, onWord, onLookupWord }: {
-  text: string; chapter: number; c: Palette; width: number; height: number; spec: TextStyleSpec; highlight: string;
+  text: string; chapter: number; c: Palette; width: number; height: number; spec: TextStyleSpec;
   speechRange?: { start: number; end: number } | null;
   selecting?: boolean; sel?: { a: number; b: number } | null; onWord?: (i: number) => void;
 }) {
@@ -75,9 +75,6 @@ function TextPage({ text, chapter, c, width, height, spec, highlight, speechRang
   const sep = text.indexOf('\n\n');
   const title = isHeading ? text.slice(2, sep) : null;
   const body = isHeading ? text.slice(sep + 2) : text;
-  // highlight / selection only change the background, so they never change the line breaks
-  const pieces = !selecting && highlight ? splitByMatch(body, highlight) : null;
-  const speechPieces = !selecting && speechRange ? [{ text: body.slice(0, speechRange.start), hit: false }, { text: body.slice(speechRange.start, speechRange.end), hit: true }, { text: body.slice(speechRange.end), hit: false }].filter((p) => p.text.length > 0) : null;
   const lo = sel ? Math.min(sel.a, sel.b) : -1;
   const hi = sel ? Math.max(sel.a, sel.b) : -1;
   return (
@@ -101,11 +98,7 @@ function TextPage({ text, chapter, c, width, height, spec, highlight, speechRang
           ) : (
             t.text
           ),
-        ) || speechPieces
-            ? speechPieces.map((p, i) => (p.hit ? <Text key={`speech-${i}`} style={{ backgroundColor: c.mark }}>{p.text}</Text> : p.text))
-            : pieces
-              ? pieces.map((p, i) => (p.hit ? <Text key={i} style={{ backgroundColor: c.mark }}>{p.text}</Text> : p.text))
-            : body}
+        )}
       </Text>
     </View>
   );
@@ -576,7 +569,7 @@ export default function ReaderScreen({ route, navigation }: Props) {
                 <CoverPage book={book} pageCount={Math.max(1, pages.length - 1)} c={c} width={width} height={area.h} family={family} />
               ) : (
                 <TextPage
-                  text={pages[i]} chapter={chapterOf[i]} c={c} width={width} height={area.h} spec={spec} highlight={highlight}
+                  text={pages[i]} chapter={chapterOf[i]} c={c} width={width} height={area.h} spec={spec}
                   speechRange={speechAt >= 0 && speechSentences[speechAt]?.page === i ? { start: speechSentences[speechAt].start, end: speechSentences[speechAt].end } : null}
                   selecting={selecting && i === page} sel={i === page ? sel : null} onWord={onWord}
                 />
