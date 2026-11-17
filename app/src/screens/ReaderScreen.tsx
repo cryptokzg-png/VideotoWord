@@ -69,7 +69,7 @@ type TextStyleSpec = { fontFamily: string; fontSize: number; lineHeight: number 
 function TextPage({ text, chapter, c, width, height, spec, highlight, speechRange, selecting, lookupMode, sel, onWord, onLookupWord }: {
   text: string; chapter: number; c: Palette; width: number; height: number; spec: TextStyleSpec; highlight: string;
   speechRange?: { start: number; end: number } | null;
-  selecting?: boolean; lookupMode?: boolean; sel?: { a: number; b: number } | null; onWord?: (i: number) => void; onLookupWord?: (word: string) => void;
+  selecting?: boolean; sel?: { a: number; b: number } | null; onWord?: (i: number) => void;
 }) {
   const isHeading = text.startsWith('# ');
   const sep = text.indexOf('\n\n');
@@ -89,21 +89,19 @@ function TextPage({ text, chapter, c, width, height, spec, highlight, speechRang
         android_hyphenationFrequency="none"
         style={{ color: c.text, ...spec }}
       >
-        {selecting || lookupMode
-          ? tokenize(body).map((t, i) =>
-              t.word ? (
-                <Text
-                  key={i}
-                  onPress={() => lookupMode ? onLookupWord?.(t.text) : onWord?.(t.index)}
-                  style={t.index >= lo && t.index <= hi ? { backgroundColor: c.mark } : undefined}
-                >
-                  {t.text}
-                </Text>
-              ) : (
-                t.text
-              ),
-            )
-          : speechPieces
+        {tokenize(body).map((t, i) =>
+          t.word ? (
+            <Text
+              key={i}
+              onPress={() => onWord?.(t.index)}
+              style={selecting && t.index >= lo && t.index <= hi ? { backgroundColor: c.mark } : undefined}
+            >
+              {t.text}
+            </Text>
+          ) : (
+            t.text
+          ),
+        ) || speechPieces
             ? speechPieces.map((p, i) => (p.hit ? <Text key={`speech-${i}`} style={{ backgroundColor: c.mark }}>{p.text}</Text> : p.text))
             : pieces
               ? pieces.map((p, i) => (p.hit ? <Text key={i} style={{ backgroundColor: c.mark }}>{p.text}</Text> : p.text))
@@ -219,7 +217,6 @@ export default function ReaderScreen({ route, navigation }: Props) {
   const [dictionaryWord,setDictionaryWord]=useState('');
   const [dictionaryResult,setDictionaryResult]=useState('');
   const [dictionaryLoading,setDictionaryLoading]=useState(false);
-  const [lookupMode,setLookupMode]=useState(false);
 
   const fontSize = BASE_FONT * FONT_SCALES[settings.fontIdx] * (large ? 1.25 : 1);
   const spec: TextStyleSpec = useMemo(
@@ -420,7 +417,10 @@ export default function ReaderScreen({ route, navigation }: Props) {
     } finally { setDictionaryLoading(false); }
   };
 
-  const onWord = (i: number) => setSel((cur) => tapWord(cur, i));
+  const onWord = (i: number) => {
+    setSelecting(true);
+    setSel((cur) => tapWord(cur, i));
+  };
 
   const pageWords = selecting ? wordCount(bodyOfPage(page)) : 0;
   const extend = (side: 'start' | 'end') =>
@@ -478,12 +478,7 @@ export default function ReaderScreen({ route, navigation }: Props) {
     .filter((x): x is { i: number; title: string } => !!x);
   const currentChapter = page === 0 ? 0 : chapterOf[page] ?? 0;
 
-  const onLookupWord = (rawWord: string) => {
-    const word = rawWord.replace(/^[^\p{L}]+|[^\p{L}]+$/gu, '');
-    if (!word) return;
-    setLookupMode(false);
-    void lookupWord(word);
-  };
+
 
   const progress = pages.length ? Math.min(1, (starts[page] ?? 0) / Math.max(1, book.totalChars)) : 0;
   const btn = [s.pill, { backgroundColor: c.card, borderColor: c.border }];
@@ -583,7 +578,7 @@ export default function ReaderScreen({ route, navigation }: Props) {
                 <TextPage
                   text={pages[i]} chapter={chapterOf[i]} c={c} width={width} height={area.h} spec={spec} highlight={highlight}
                   speechRange={speechAt >= 0 && speechSentences[speechAt]?.page === i ? { start: speechSentences[speechAt].start, end: speechSentences[speechAt].end } : null}
-                  selecting={selecting && i === page} lookupMode={lookupMode && i === page} sel={i === page ? sel : null} onWord={onWord} onLookupWord={onLookupWord}
+                  selecting={selecting && i === page} sel={i === page ? sel : null} onWord={onWord}
                 />
               )
             }
@@ -596,25 +591,11 @@ export default function ReaderScreen({ route, navigation }: Props) {
       <View style={[s.card, { backgroundColor: c.card, borderColor: c.border, marginBottom: Math.max(insets.bottom, 12) }]}>
         <View style={[s.cardRow, { justifyContent: 'flex-end' }]}>
           <View style={{ flexDirection: 'row', gap: 8 }}>
-            <Pressable
-              onPress={() => { setSelecting(false); setSel(null); setLookupMode((active) => !active); toast(lookupMode ? 'Kelime arama kapatıldı' : 'Aramak istediğin kelimeye dokun'); }}
-              style={[s.square,{backgroundColor:lookupMode?c.accent:'transparent',borderColor:lookupMode?c.accent:c.border}]}
-              accessibilityRole="button" accessibilityLabel="Kelime arama modunu aç veya kapat" accessibilityState={{selected:lookupMode}}
-            >
-              <Text style={{color:lookupMode?c.onAccent:c.text,fontSize:19}}>⌕</Text>
-            </Pressable>
             <Pressable onPress={() => pinch(-1)} style={[s.square, { borderColor: c.border }]} accessibilityRole="button" accessibilityLabel="Yazıyı küçült">
               <Text style={{ color: c.text, fontWeight: '600' }}>A−</Text>
             </Pressable>
             <Pressable onPress={() => pinch(1)} style={[s.square, { borderColor: c.border }]} accessibilityRole="button" accessibilityLabel="Yazıyı büyüt">
               <Text style={{ color: c.text, fontWeight: '700', fontSize: 18 }}>A+</Text>
-            </Pressable>
-            <Pressable
-              onPress={() => { setLookupMode(false); setSel(null); setSelecting((v) => !v); }}
-              style={[s.square, { backgroundColor: selecting ? c.accent : 'transparent', borderColor: selecting ? c.accent : c.border }]}
-              accessibilityRole="button" accessibilityLabel="Söz seç ve not al" accessibilityState={{ selected: selecting }}
-            >
-              <Text style={{ color: selecting ? c.onAccent : c.text, fontSize: 18 }}>✎</Text>
             </Pressable>
             <Pressable
               onPress={flipMark}
@@ -656,6 +637,14 @@ export default function ReaderScreen({ route, navigation }: Props) {
           <View style={s.selActions}>
             <Pressable onPress={() => { setSelecting(false); setSel(null); }} style={s.selBtn} accessibilityRole="button">
               <Text style={{ color: c.muted, fontWeight: '700' }}>Vazgeç</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => picked && picked.quote.trim().split(/\\s+/).length === 1 ? void lookupWord(picked.quote) : toast('Anlamını aramak için tek kelime seç') }
+              disabled={!picked || picked.quote.trim().split(/\\s+/).length !== 1}
+              style={[s.selBtn, { opacity: picked && picked.quote.trim().split(/\\s+/).length === 1 ? 1 : 0.4 }]}
+              accessibilityRole="button"
+            >
+              <Text style={{ color: c.accent, fontWeight: '800' }}>⌕ Anlamını bul</Text>
             </Pressable>
             <Pressable
               onPress={() => saveQuote(true, '')}
