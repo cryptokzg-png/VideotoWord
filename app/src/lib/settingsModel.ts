@@ -21,6 +21,6 @@ export function parseSettings(raw: Record<string, string>): Settings {
   const fontIdx = Number.isInteger(idx) && idx >= 0 && idx < FONT_SCALES.length ? idx : DEFAULTS.fontIdx;
   const font = raw.font === 'sans' || raw.font === 'serif' ? raw.font : DEFAULTS.font;
   const rateValue = Number(raw.speechRate);
-  const speechRate = Number.isFinite(rateValue) ? Math.min(1.5, Math.max(0.7, rateValue)) : DEFAULTS.speechRate;
+  const speechRate = Number.isFinite(rateValue) ? Math.min(2.5, Math.max(0.7, rateValue)) : DEFAULTS.speechRate;
   return { mode, fontIdx, font, speechRate };
 }
