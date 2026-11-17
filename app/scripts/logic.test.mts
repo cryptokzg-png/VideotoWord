@@ -229,3 +229,4 @@ eq(parseSettings({ speechRate: '2.5' }).speechRate, 2.5, 'speech speed allows 2.
 eq(parseSettings({ speechRate: '3.0' }).speechRate, 2.5, 'speech speed clamps at 2.5x');
 eq(parseSettings({ speechRate: '0.2' }).speechRate, 0.7, 'speech speed minimum');
 
+
