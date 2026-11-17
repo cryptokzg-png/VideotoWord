@@ -360,7 +360,7 @@ export default function ReaderScreen({ route, navigation }: Props) {
   const cancelSleepTimer = () => { setSleepTimerEndsAt(null); setSleepTimerMinutes(null); };
 
   const lookupWord = async (value = dictionaryWord) => {
-    const word = value.trim().replace(/^[^\\p{L}]+|[^\\p{L}]+$/gu, '');
+    const word = value.trim().replace(/^[^\p{L}]+|[^\p{L}]+$/gu, '');
     if (!word) { setDictionaryResult('Lütfen bir kelime yaz.'); return; }
     setDictionaryWord(word);
     setDictionaryOpen(true);
@@ -377,7 +377,7 @@ export default function ReaderScreen({ route, navigation }: Props) {
           const pagesData = data?.query?.pages ?? {};
           const pageData = Object.values(pagesData)[0] as { title?: string; extract?: string } | undefined;
           result = (pageData?.extract ?? '').trim();
-          if (result) result = `${pageData?.title ?? word}\\n\\n${result}`;
+          if (result) result = `${pageData?.title ?? word}\n\n${result}`;
         }
       } catch { /* Try the REST endpoint below. */ }
       if (!result) {
@@ -385,7 +385,7 @@ export default function ReaderScreen({ route, navigation }: Props) {
         const response = await fetch(restUrl, { headers: { Accept: 'application/json' } });
         if (!response.ok) throw new Error('Sözlük servisine şu anda ulaşılamıyor.');
         const data = await response.json();
-        result = [data?.title, data?.extract ?? data?.description].filter(Boolean).join('\\n\\n').trim();
+        result = [data?.title, data?.extract ?? data?.description].filter(Boolean).join('\n\n').trim();
       }
       setDictionaryResult(result ? result.slice(0, 1800) : 'Bu kelime için Türkçe Vikisözlük kaydı bulunamadı. Başka yazılış deneyebilir veya webde arayabilirsin.');
     } catch {
@@ -452,7 +452,7 @@ export default function ReaderScreen({ route, navigation }: Props) {
   const currentChapter = page === 0 ? 0 : chapterOf[page] ?? 0;
 
   const onLookupWord = (rawWord: string) => {
-    const word = rawWord.replace(/^[^\\p{L}]+|[^\\p{L}]+$/gu, '');
+    const word = rawWord.replace(/^[^\p{L}]+|[^\p{L}]+$/gu, '');
     if (!word) return;
     setLookupMode(false);
     void lookupWord(word);
