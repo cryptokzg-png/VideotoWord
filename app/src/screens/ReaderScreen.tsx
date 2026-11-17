@@ -1003,3 +1003,4 @@ const s = StyleSheet.create({
 // Final reader UI: summary panel intentionally removed for a cleaner reading layout.
 
 
+
