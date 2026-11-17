@@ -144,3 +144,4 @@ const styles = StyleSheet.create({
   stop: { width: 40, height: 40, borderRadius: 12, backgroundColor: '#354263', alignItems: 'center', justifyContent: 'center' },
   controlText: { color: '#FFFFFF', fontWeight: '900', fontSize: 17 },
 });
+
