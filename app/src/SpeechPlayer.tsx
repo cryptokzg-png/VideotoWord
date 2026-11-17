@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Speech from 'expo-speech';
 import { useSettings } from './settings';
 import { useTheme } from './theme';
@@ -106,9 +107,10 @@ export function SpeechPlayerProvider({ children }: { children: ReactNode }) {
 export function FloatingSpeechPlayer() {
   const player = useSpeechPlayer();
   const t = useTheme();
+  const insets = useSafeAreaInsets();
   if (player.status === 'idle') return null;
   return (
-    <View style={[styles.wrap, { backgroundColor: t.primaryDark, borderColor: t.accent }]}>
+    <View style={[styles.wrap, { backgroundColor: t.primaryDark, borderColor: t.accent, bottom: Math.max(insets.bottom, 24) + 14 }]}>
       <View style={styles.top}>
         <View style={{ flex: 1 }}>
           <Text numberOfLines={1} style={styles.brand}>BARIŞ KİTAPLIK · SESLİ OKUMA</Text>
@@ -130,7 +132,7 @@ export function FloatingSpeechPlayer() {
 }
 
 const styles = StyleSheet.create({
-  wrap: { position: 'absolute', left: 12, right: 12, bottom: 10, zIndex: 1000, elevation: 18, borderWidth: 1.5, borderRadius: 18, padding: 12, gap: 10, shadowColor: '#000', shadowOpacity: 0.25, shadowRadius: 10, shadowOffset: { width: 0, height: 4 } },
+  wrap: { position: 'absolute', left: 12, right: 12, zIndex: 1000, borderWidth: 1.5, borderRadius: 18, padding: 12, gap: 10, shadowColor: '#000', shadowOpacity: 0.25, shadowRadius: 10, shadowOffset: { width: 0, height: 4 } },
   top: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   brand: { color: '#D4AF37', fontSize: 10, fontWeight: '900', letterSpacing: 1 },
   title: { color: '#FFFFFF', fontSize: 14, fontWeight: '800', marginTop: 2 },
