@@ -360,23 +360,36 @@ export default function ReaderScreen({ route, navigation }: Props) {
   const cancelSleepTimer = () => { setSleepTimerEndsAt(null); setSleepTimerMinutes(null); };
 
   const lookupWord = async (value = dictionaryWord) => {
-    const word = value.trim().replace(/^[^\p{L}]+|[^\p{L}]+$/gu, '');
+    const word = value.trim().replace(/^[^\\p{L}]+|[^\\p{L}]+$/gu, '');
     if (!word) { setDictionaryResult('Lütfen bir kelime yaz.'); return; }
     setDictionaryWord(word);
     setDictionaryOpen(true);
     setDictionaryLoading(true);
     setDictionaryResult('');
     try {
-      const url = `https://tr.wiktionary.org/w/api.php?action=query&prop=extracts&explaintext=1&exsectionformat=plain&titles=${encodeURIComponent(word)}&format=json&origin=*`;
-      const response = await fetch(url);
-      if (!response.ok) throw new Error('Sözlük hizmetine ulaşılamadı.');
-      const data = await response.json();
-      const pagesData = data?.query?.pages ?? {};
-      const pageData = Object.values(pagesData)[0] as { title?: string; extract?: string } | undefined;
-      const extract = (pageData?.extract ?? '').trim();
-      setDictionaryResult(extract ? `${pageData?.title ?? word}\\n\\n${extract.slice(0, 1800)}` : 'Bu kelime için Türkçe Vikisözlük kaydı bulunamadı. Başka yazılış deneyebilir veya webde arayabilirsin.');
-    } catch (error: any) {
-      setDictionaryResult(error?.message ?? 'Sözlük aranırken bir hata oluştu. İnternet bağlantını kontrol et.');
+      // Try MediaWiki's extract API first, then its REST summary endpoint.
+      let result = '';
+      const apiUrl = `https://tr.wiktionary.org/w/api.php?action=query&prop=extracts&explaintext=1&exsectionformat=plain&titles=${encodeURIComponent(word)}&format=json`;
+      try {
+        const response = await fetch(apiUrl, { headers: { Accept: 'application/json' } });
+        if (response.ok) {
+          const data = await response.json();
+          const pagesData = data?.query?.pages ?? {};
+          const pageData = Object.values(pagesData)[0] as { title?: string; extract?: string } | undefined;
+          result = (pageData?.extract ?? '').trim();
+          if (result) result = `${pageData?.title ?? word}\\n\\n${result}`;
+        }
+      } catch { /* Try the REST endpoint below. */ }
+      if (!result) {
+        const restUrl = `https://tr.wiktionary.org/api/rest_v1/page/summary/${encodeURIComponent(word)}`;
+        const response = await fetch(restUrl, { headers: { Accept: 'application/json' } });
+        if (!response.ok) throw new Error('Sözlük servisine şu anda ulaşılamıyor.');
+        const data = await response.json();
+        result = [data?.title, data?.extract ?? data?.description].filter(Boolean).join('\\n\\n').trim();
+      }
+      setDictionaryResult(result ? result.slice(0, 1800) : 'Bu kelime için Türkçe Vikisözlük kaydı bulunamadı. Başka yazılış deneyebilir veya webde arayabilirsin.');
+    } catch {
+      setDictionaryResult('Sözlük servisine ulaşılamadı. İnternet bağlantını kontrol et veya “Vikisözlük’te aç” seçeneğini kullan.');
     } finally { setDictionaryLoading(false); }
   };
 
@@ -570,7 +583,7 @@ export default function ReaderScreen({ route, navigation }: Props) {
               <Text style={{ color: c.text, fontWeight: '700', fontSize: 18 }}>A+</Text>
             </Pressable>
             <Pressable
-              onPress={() => { setSel(null); setSelecting((v) => !v); }}
+              onPress={() => { setLookupMode(false); setSel(null); setSelecting((v) => !v); }}
               style={[s.square, { backgroundColor: selecting ? c.accent : 'transparent', borderColor: selecting ? c.accent : c.border }]}
               accessibilityRole="button" accessibilityLabel="Söz seç ve not al" accessibilityState={{ selected: selecting }}
             >
