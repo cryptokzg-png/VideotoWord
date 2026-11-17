@@ -10,7 +10,7 @@ import { autoTitle } from '../lib/titles';
 import { RenameDialog } from '../components/RenameDialog';
 import { highlightKey, paragraphRange, selectQuote, shareText, tapWord, tokenize, wordCount } from '../lib/notes';
 import { COVER, pageForPos, pageStarts, pagesFromLines } from '../lib/layout';
-import { foldChapters, searchBook, splitByMatch, type SearchHit } from '../lib/search';
+import { foldChapters, searchBook, type SearchHit } from '../lib/search';
 import { exportPdf, sharePageImage } from '../lib/shareBook';
 import { describeBook } from '../lib/sizeLabel';
 import type { Book, Note } from '../types';
@@ -66,7 +66,7 @@ function Heading({ chapter, title, c, family }: { chapter: number; title: string
 
 type TextStyleSpec = { fontFamily: string; fontSize: number; lineHeight: number };
 
-function TextPage({ text, chapter, c, width, height, spec, highlight, speechRange, selecting, lookupMode, sel, onWord, onLookupWord }: {
+function TextPage({ text, chapter, c, width, height, spec, speechRange, selecting, sel, onWord }: {
   text: string; chapter: number; c: Palette; width: number; height: number; spec: TextStyleSpec;
   speechRange?: { start: number; end: number } | null;
   selecting?: boolean; sel?: { a: number; b: number } | null; onWord?: (i: number) => void;
@@ -632,9 +632,9 @@ export default function ReaderScreen({ route, navigation }: Props) {
               <Text style={{ color: c.muted, fontWeight: '700' }}>Vazgeç</Text>
             </Pressable>
             <Pressable
-              onPress={() => picked && picked.quote.trim().split(/\\s+/).length === 1 ? void lookupWord(picked.quote) : toast('Anlamını aramak için tek kelime seç') }
-              disabled={!picked || picked.quote.trim().split(/\\s+/).length !== 1}
-              style={[s.selBtn, { opacity: picked && picked.quote.trim().split(/\\s+/).length === 1 ? 1 : 0.4 }]}
+              onPress={() => picked && picked.quote.trim().split(/\s+/).length === 1 ? void lookupWord(picked.quote) : toast('Anlamını aramak için tek kelime seç') }
+              disabled={!picked || picked.quote.trim().split(/\s+/).length !== 1}
+              style={[s.selBtn, { opacity: picked && picked.quote.trim().split(/\s+/).length === 1 ? 1 : 0.4 }]}
               accessibilityRole="button"
             >
               <Text style={{ color: c.accent, fontWeight: '800' }}>⌕ Anlamını bul</Text>
