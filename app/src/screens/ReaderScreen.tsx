@@ -18,7 +18,7 @@ import { FONT_FAMILIES, FONT_SCALES, useSettings } from '../settings';
 import { useIsDark } from '../theme';
 import { PageFlipper, type FlipHandle } from '../components/PageFlipper';
 import { Measurer } from '../components/Measurer';
-import * as Speech from 'expo-speech';
+import { useSpeechPlayer } from '../SpeechPlayer';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Reader'>;
 
@@ -200,10 +200,8 @@ export default function ReaderScreen({ route, navigation }: Props) {
   const posRef = useRef(0); // reading position (non-space chars); survives re-layout
   const startedFresh = useRef(true);
   const pageRef = useRef(page); pageRef.current = page;
-  const speechToken = useRef(0), speechIndex = useRef(0);
+  const { index: speechAt, status: speechStatus, setQueue: setSpeechQueue, playFrom: speakFrom, pause: pauseSpeech, stop: stopSpeech, skip: skipSpeech } = useSpeechPlayer();
   const [speechOpen,setSpeechOpen]=useState(false);
-  const [speechStatus,setSpeechStatus]=useState<'idle'|'playing'|'paused'>('idle');
-  const [speechAt,setSpeechAt]=useState(-1);
   const [sleepTimerMinutes,setSleepTimerMinutes]=useState<number | null>(null);
   const [sleepTimerEndsAt,setSleepTimerEndsAt]=useState<number | null>(null);
   const [dictionaryOpen,setDictionaryOpen]=useState(false);
@@ -316,20 +314,15 @@ export default function ReaderScreen({ route, navigation }: Props) {
   };
 
   const speechSentences = useMemo(() => makeSpeechSentences(pages), [pages]);
-  const speakFrom = async (index: number) => {
-    if(index<0||index>=speechSentences.length)return;
-    const token=++speechToken.current; speechIndex.current=index; setSpeechAt(index); setSpeechStatus('playing');
-    const sentence=speechSentences[index]; if(pageRef.current!==sentence.page)jump(sentence.page);
-    try {
-      if(token!==speechToken.current)return;
-      Speech.stop(); // replace any currently playing sentence when the user skips or resumes
-      Speech.speak(sentence.text,{language:'tr-TR',rate:settings.speechRate,onDone:()=>{if(token!==speechToken.current)return;const next=index+1;if(next<speechSentences.length)void speakFrom(next);else{setSpeechStatus('idle');setSpeechAt(-1);}},onError:(e)=>{if(token!==speechToken.current)return;setSpeechStatus('idle');Alert.alert('Sesli okuma durdu',e.message||'Metin okunamadı.');}});
-    }catch(e:any){if(token!==speechToken.current)return;setSpeechStatus('idle');Alert.alert('Sesli okuma başlatılamadı',String(e?.message??e));}
-  };
-  const pauseSpeech=()=>{if(speechStatus!=='playing')return;speechToken.current+=1;Speech.stop();setSpeechStatus('paused');};
-  const stopSpeech=()=>{speechToken.current+=1;Speech.stop();setSpeechStatus('idle');setSpeechAt(-1);};
-  const skipSpeech=(delta:-1|1)=>{const base=speechAt>=0?speechAt:speechIndex.current;void speakFrom(Math.max(0,Math.min(speechSentences.length-1,base+delta)));};
-  useEffect(()=>()=>{speechToken.current+=1;Speech.stop();},[]);
+  useEffect(() => {
+    if (book && speechSentences.length) setSpeechQueue(speechSentences, book.title);
+  }, [book?.id, book?.title, speechSentences, setSpeechQueue]);
+
+  useEffect(() => {
+    if (speechAt >= 0 && speechSentences[speechAt] && pageRef.current !== speechSentences[speechAt].page) {
+      jump(speechSentences[speechAt].page);
+    }
+  }, [speechAt, speechSentences, jump]);
 
   useEffect(() => {
     if (!sleepTimerEndsAt) return;
@@ -716,7 +709,7 @@ export default function ReaderScreen({ route, navigation }: Props) {
         <Text style={{color:c.muted,fontSize:13,paddingHorizontal:4,paddingBottom:8}}>{speechAt>=0?`Cümle ${speechAt+1} / ${speechSentences.length}`:'Kitap başından veya seçtiğin sayfadan okumaya başla'}</Text>
         <View style={{flexDirection:'row',flexWrap:'wrap',gap:8,paddingVertical:8}}>
           <Pressable onPress={()=>skipSpeech(-1)} disabled={!speechSentences.length} style={[s.pill,{backgroundColor:c.card,borderColor:c.border,opacity:speechSentences.length?1:0.4}]}><Text style={{color:c.text}}>‹ Cümle</Text></Pressable>
-          <Pressable onPress={()=>speechStatus==='playing'?pauseSpeech():void speakFrom(speechAt>=0?speechAt:Math.max(0,speechSentences.findIndex(x=>x.page===page)))} disabled={!speechSentences.length} style={[s.pill,{backgroundColor:c.accent,borderColor:c.accent}]}><Text style={{color:c.onAccent,fontWeight:'800'}}>{speechStatus==='playing'?'Duraklat':speechStatus==='paused'?'Sürdür':'Başlat'}</Text></Pressable>
+          <Pressable onPress={()=>speechStatus==='playing'?pauseSpeech():speakFrom(speechAt>=0?speechAt:Math.max(0,speechSentences.findIndex(x=>x.page===page)))} disabled={!speechSentences.length} style={[s.pill,{backgroundColor:c.accent,borderColor:c.accent}]}><Text style={{color:c.onAccent,fontWeight:'800'}}>{speechStatus==='playing'?'Duraklat':speechStatus==='paused'?'Sürdür':'Başlat'}</Text></Pressable>
           <Pressable onPress={()=>skipSpeech(1)} disabled={!speechSentences.length} style={[s.pill,{backgroundColor:c.card,borderColor:c.border,opacity:speechSentences.length?1:0.4}]}><Text style={{color:c.text}}>Cümle ›</Text></Pressable>
           <Pressable onPress={stopSpeech} style={[s.pill,{backgroundColor:c.card,borderColor:c.border}]}><Text style={{color:c.text}}>Durdur</Text></Pressable>
         </View>
