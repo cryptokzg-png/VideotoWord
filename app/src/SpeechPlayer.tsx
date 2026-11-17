@@ -29,6 +29,8 @@ export function SpeechPlayerProvider({ children }: { children: ReactNode }) {
   const [index, setIndex] = useState(-1);
   const [status, setStatus] = useState<Player['status']>('idle');
   const [bookTitle, setBookTitle] = useState('');
+  const titleRef = useRef('');
+  const playFromRef = useRef<(index: number) => void>(() => {});
   const token = useRef(0);
   const indexRef = useRef(-1);
   const itemsRef = useRef<SpeechItem[]>([]);
@@ -36,6 +38,14 @@ export function SpeechPlayerProvider({ children }: { children: ReactNode }) {
   rateRef.current = settings.speechRate;
 
   const setQueue = useCallback((next: SpeechItem[], title: string) => {
+    if (titleRef.current && titleRef.current !== title) {
+      token.current += 1;
+      Speech.stop();
+      indexRef.current = -1;
+      setIndex(-1);
+      setStatus('idle');
+    }
+    titleRef.current = title;
     itemsRef.current = next;
     setItems(next);
     setBookTitle(title);
@@ -56,7 +66,7 @@ export function SpeechPlayerProvider({ children }: { children: ReactNode }) {
       onDone: () => {
         if (runToken !== token.current) return;
         const next = start + 1;
-        if (next < itemsRef.current.length) playFrom(next);
+        if (next < itemsRef.current.length) playFromRef.current(next);
         else { indexRef.current = -1; setIndex(-1); setStatus('idle'); }
       },
       onError: () => {
@@ -64,6 +74,8 @@ export function SpeechPlayerProvider({ children }: { children: ReactNode }) {
       },
     });
   }, []);
+
+  playFromRef.current = playFrom;
 
   const pause = useCallback(() => {
     if (status !== 'playing') return;
