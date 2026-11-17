@@ -86,19 +86,24 @@ function TextPage({ text, chapter, c, width, height, spec, speechRange, selectin
         android_hyphenationFrequency="none"
         style={{ color: c.text, ...spec }}
       >
-        {tokenize(body).map((t, i) =>
-          t.word ? (
-            <Text
-              key={i}
-              onPress={() => onWord?.(t.index)}
-              style={selecting && t.index >= lo && t.index <= hi ? { backgroundColor: c.mark } : undefined}
-            >
-              {t.text}
-            </Text>
-          ) : (
-            t.text
-          ),
-        )}
+        {(() => {
+          let charOffset = 0;
+          return tokenize(body).map((t, i) => {
+            const tokenStart = charOffset;
+            charOffset += t.text.length;
+            const isSpeaking = !!speechRange && tokenStart < speechRange.end && charOffset > speechRange.start;
+            const isSelected = selecting && t.word && t.index >= lo && t.index <= hi;
+            return (
+              <Text
+                key={i}
+                onPress={t.word ? () => onWord?.(t.index) : undefined}
+                style={isSpeaking ? { backgroundColor: c.mark, color: c.head } : isSelected ? { backgroundColor: c.mark } : undefined}
+              >
+                {t.text}
+              </Text>
+            );
+          });
+        })()}
       </Text>
     </View>
   );
@@ -718,7 +723,7 @@ export default function ReaderScreen({ route, navigation }: Props) {
           <Text style={{color:c.text}}>Okuma hızı</Text><View style={{flexDirection:'row',alignItems:'center',gap:12}}>
             <Pressable onPress={()=>update({speechRate:Math.max(0.7,Math.round((settings.speechRate-0.1)*10)/10)})} style={s.square}><Text style={{color:c.text}}>−</Text></Pressable>
             <Text style={{color:c.accent,fontWeight:'800'}}>{settings.speechRate.toFixed(1)}×</Text>
-            <Pressable onPress={()=>update({speechRate:Math.min(1.5,Math.round((settings.speechRate+0.1)*10)/10)})} style={s.square}><Text style={{color:c.text}}>+</Text></Pressable>
+            <Pressable onPress={()=>update({speechRate:Math.min(2.5,Math.round((settings.speechRate+0.1)*10)/10)})} style={s.square}><Text style={{color:c.text}}>+</Text></Pressable>
           </View>
         </View>
         <View style={{height:1,backgroundColor:c.border,marginVertical:10}} />
